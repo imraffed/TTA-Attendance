@@ -400,8 +400,8 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
 <!-- Import Modal -->
 <div class="modal-overlay" id="importModal">
   <div class="import-box">
-    <h3 style="margin-bottom:4px;font-weight:700;">Import Weekly Report</h3>
-    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">Uploading to: <strong id="importStoreName" style="color:var(--accent)"></strong></p>
+    <h3 style="margin-bottom:4px;font-weight:700;">Import Report</h3>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">Timeclock attendance, old tracker CSV, or time-off requests &mdash; uploading to: <strong id="importStoreName" style="color:var(--accent)"></strong></p>
     <div class="drop-zone" id="dropZone">
       <p><strong>Drop .xlsx file here</strong><br>or click to browse</p>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
@@ -881,13 +881,19 @@ function processFile(file) {
   reader.onload = e => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      // prefer an explicit time-off sheet if one exists (some exports put a pivot table first)
+      let sheetName = wb.SheetNames.find(sn => /time.?off/i.test(sn)) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       if (!rows.length) { toast('File appears empty', 'error'); return; }
       console.log('=== IMPORT DEBUG ===');
+      console.log('Sheet:', sheetName);
       console.log('Columns:', Object.keys(rows[0]));
       console.log('Sample rows:', rows.slice(0, 3));
       const cols = Object.keys(rows[0]);
+      // time-off request export (When I Work): has Type + Status + Start Date
+      const isTimeOff = cols.some(c => /^status$/i.test(c.trim())) && cols.some(c => /start.?date/i.test(c)) && cols.some(c => /^type$/i.test(c.trim()));
+      if (isTimeOff) { parseTimeOff(rows, cols); return; }
       const nameCol = cols.find(c => /^name$/i.test(c.trim())) || cols.find(c => /name/i.test(c));
       const dateCol = cols.find(c => /^date$/i.test(c.trim())) || cols.find(c => /date/i.test(c));
       const typeCol = cols.find(c => /^type$/i.test(c.trim())) || cols.find(c => /type/i.test(c));
@@ -901,6 +907,119 @@ function processFile(file) {
     } catch(err) { console.error(err); toast('Error: ' + err.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function isoDate(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') {
+    const d = XLSX.SSF.parse_date_code(raw);
+    return d ? d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0') : null;
+  }
+  const s = raw.toString().trim();
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2,'0') + '-' + m[3].padStart(2,'0');
+  const d = new Date(s);
+  return !isNaN(d) ? d.toISOString().split('T')[0] : null;
+}
+
+function normFL(name) {
+  name = (name||'').toString().trim();
+  if (name.includes(',')) {
+    const p = name.split(',').map(s => s.trim());
+    return ((p[1]||'') + ' ' + p[0]).toLowerCase().replace(/\s+/g,' ').trim();
+  }
+  return name.toLowerCase().replace(/\s+/g,' ');
+}
+
+function findExistingKey(name) {
+  const target = normFL(name);
+  for (const [k, p] of Object.entries(attendanceData)) {
+    if (normFL(p.displayName || k) === target) return k;
+  }
+  return null;
+}
+
+function parseTimeOff(rows, cols) {
+  const col = re => cols.find(c => re.test(c.trim()));
+  const nameC = col(/^name$/i) || col(/name/i);
+  const typeC = col(/^type$/i);
+  const statusC = col(/^status$/i);
+  const startC = col(/start.?date/i);
+  const endC = col(/end.?date/i);
+  const paidC = col(/^paid.?hours$/i);
+  const unpaidC = col(/^unpaid.?hours$/i);
+
+  const parsed = {};
+  const skippedTypes = {};
+  let notApproved = 0, applied = 0;
+
+  rows.forEach(row => {
+    const name = (row[nameC]||'').toString().trim();
+    if (!name) return;
+    const status = (row[statusC]||'').toString().trim().toLowerCase();
+    if (status !== 'approved') { notApproved++; return; }
+    const type = (row[typeC]||'').toString().trim();
+    const t = type.toLowerCase();
+    let kind = null;
+    if (/nyc|protected|safe/.test(t)) kind = 'usl';                 // "NYC Protected Safe & Sick Time Off" = the unpaid 32h bank
+    else if (/unpaid/.test(t) && /sick/.test(t)) kind = 'usl';      // e.g. "Unpaid Sick time"
+    else if (/sick/.test(t)) kind = 'paid';                         // "Sick", "sick" = paid sick (tracked in Gusto)
+    else { skippedTypes[type] = (skippedTypes[type]||0) + 1; return; } // Personal, Unavailable, Holiday, Unpaid PTO, ...
+
+    const sd = isoDate(row[startC]);
+    const ed = isoDate(row[endC]) || sd;
+    if (!sd) return;
+
+    const ek = findExistingKey(name);
+    if (ek && attendanceData[ek] && attendanceData[ek].management) return;
+    let sk, disp;
+    if (ek) { sk = ek; disp = attendanceData[ek].displayName || ek; }
+    else {
+      const parts = name.split(/\s+/);
+      disp = parts.length > 1 ? parts.slice(1).join(' ') + ', ' + parts[0] : name;
+      sk = disp.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    }
+    if (!parsed[sk]) parsed[sk] = { displayName: disp, dates: {}, notes: {}, usl: {} };
+
+    const days = [];
+    let cur = new Date(sd + 'T00:00:00');
+    const end = new Date(ed + 'T00:00:00');
+    let guard = 0;
+    while (cur <= end && guard < 62) {
+      days.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+      cur.setDate(cur.getDate() + 1);
+      guard++;
+    }
+
+    const unpaidH = parseFloat(row[unpaidC]) || 0;
+    const paidH = parseFloat(row[paidC]) || 0;
+    // WIW reports all-day requests as 24h; a shift is max 8h (480 min). Partial-day hours stay exact.
+    let perDayMin = 0;
+    if (kind === 'usl') {
+      const totalH = unpaidH + paidH;
+      perDayMin = Math.round((totalH * 60) / days.length);
+      if (perDayMin <= 0) perDayMin = 480;      // no hours recorded -> assume a full shift
+      if (perDayMin > 480) perDayMin = 480;     // cap at one 8h shift per day
+    }
+
+    days.forEach(d => {
+      if (kind === 'usl') {
+        parsed[sk].dates[d] = 'USL';
+        parsed[sk].usl[d] = perDayMin;
+        parsed[sk].notes[d] = type + ' (approved, ' + perDayMin + ' min USL this day)';
+      } else {
+        parsed[sk].dates[d] = 'excused_paid';
+        parsed[sk].notes[d] = type + ' (approved' + (paidH ? ', ' + paidH + 'h paid' : '') + ')';
+      }
+      applied++;
+    });
+  });
+
+  const skippedList = Object.entries(skippedTypes).map(([t,n]) => esc(t) + ' (' + n + ')').join(', ');
+  const extra = '<p style="margin-top:8px;color:var(--text-muted);font-size:0.72rem">' +
+    applied + ' days will be marked. Skipped: ' + notApproved + ' non-approved request(s)' +
+    (skippedList ? '; non-sick types: ' + skippedList : '') + '.</p>';
+  showPreview(parsed, extra);
 }
 
 function parseIncidentLog(rows, nameCol, dateCol, typeCol) {
@@ -1010,7 +1129,7 @@ function parseGrid(rows, fnCol, lnCol, cols) {
   showPreview(parsed);
 }
 
-function showPreview(parsed) {
+function showPreview(parsed, extraHtml) {
   pendingImport = parsed;
   const names = Object.keys(parsed);
   let ti = 0; names.forEach(n => ti += Object.keys(parsed[n].dates).length);
@@ -1019,20 +1138,29 @@ function showPreview(parsed) {
     <table><thead><tr><th>Name</th><th>#</th></tr></thead><tbody>
     ${names.slice(0,15).map(n => `<tr><td>${esc(parsed[n].displayName||n)}</td><td>${Object.keys(parsed[n].dates).length}</td></tr>`).join('')}
     ${names.length>15?`<tr><td colspan="2" style="color:var(--text-muted)">...+${names.length-15} more</td></tr>`:''}
-    </tbody></table>`;
+    </tbody></table>${extraHtml||''}`;
   p.style.display = 'block';
   document.getElementById('confirmImportBtn').style.display = 'inline-flex';
 }
 
 function confirmImport() {
   if (!pendingImport) return;
+  const writeups = ['1st','2nd','final','terminated','term','completed'];
   Object.entries(pendingImport).forEach(([k,v]) => {
     if (attendanceData[k] && attendanceData[k].management) return; // management excluded
     if (!attendanceData[k]) attendanceData[k] = { displayName: v.displayName, dates: {}, notes: {} };
     if (!attendanceData[k].dates) attendanceData[k].dates = {};
     if (!attendanceData[k].notes) attendanceData[k].notes = {};
-    Object.assign(attendanceData[k].dates, v.dates);
+    Object.entries(v.dates || {}).forEach(([d, val]) => {
+      const ex = (attendanceData[k].dates[d]||'').toString().trim().toLowerCase();
+      if (writeups.includes(ex)) return; // never overwrite write-up markers
+      attendanceData[k].dates[d] = val;
+    });
     if (v.notes) Object.assign(attendanceData[k].notes, v.notes);
+    if (v.usl && Object.keys(v.usl).length) {
+      if (!attendanceData[k].usl) attendanceData[k].usl = {};
+      Object.assign(attendanceData[k].usl, v.usl);
+    }
   });
   saveStoreData(); rebuildDates(); renderTable(); closeImport();
   toast(`Imported ${Object.keys(pendingImport).length} budtenders`, 'success');
@@ -1080,12 +1208,14 @@ const DEFAULT_USL_BASE = 1920; // 32 hours in minutes, per calendar year
 function getUslUsed(person) {
   const yr = new Date().getFullYear() + '-';
   let used = 0;
-  if (person.usl) Object.entries(person.usl).forEach(([d,m]) => {
+  const uslDays = person.usl || {};
+  Object.entries(uslDays).forEach(([d,m]) => {
     if (d.startsWith(yr)) used += (parseInt(m)||0);
   });
   // legacy: each excused_unpaid day was an 8-hour (480 min) unpaid sick request
+  // (skip days that already have logged minutes so the same day never counts twice)
   if (person.dates) Object.entries(person.dates).forEach(([d,v]) => {
-    if (d.startsWith(yr) && (v||'').toString().trim().toLowerCase() === 'excused_unpaid') used += 480;
+    if (d.startsWith(yr) && !uslDays[d] && (v||'').toString().trim().toLowerCase() === 'excused_unpaid') used += 480;
   });
   return used;
 }
