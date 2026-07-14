@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budtender Attendance Tracker</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#181a23;--surface2:#1f2230;--surface3:#282b3a;
+  --border:#2e3146;--border-light:#3a3d54;--text:#e8e9f0;--text-dim:#8b8ea3;--text-muted:#5c5f75;
+  --accent:#6c8cff;--accent-dim:#4a65c7;--accent-glow:rgba(108,140,255,0.12);
+  --red:#ff6b7a;--green:#4ade80;--teal:#2dd4bf;--radius:10px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* ═══ LOGIN ═══ */
+#loginView{min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bg-glow{position:fixed;width:500px;height:500px;border-radius:50%;filter:blur(120px);opacity:0.07;pointer-events:none}
+.bg-glow-1{background:var(--accent);top:-200px;left:-100px}
+.bg-glow-2{background:#a78bfa;bottom:-200px;right:-100px}
+.login-container{width:100%;max-width:420px;padding:24px;animation:fadeUp 0.6s ease;position:relative;z-index:1}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px 36px;box-shadow:0 20px 60px rgba(0,0,0,0.4);position:relative;overflow:hidden}
+.login-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),#a78bfa,#f472b6);border-radius:16px 16px 0 0}
+.login-icon{width:56px;height:56px;background:rgba(108,140,255,0.1);border:1px solid rgba(108,140,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.login-icon svg{width:28px;height:28px;color:var(--accent)}
+.login-title{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:800;text-align:center;margin-bottom:6px;background:linear-gradient(135deg,var(--accent),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-sub{text-align:center;font-size:0.85rem;color:var(--text-muted);margin-bottom:32px}
+.input-group{position:relative;margin-bottom:20px}
+.input-group label{display:block;font-size:0.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.input-group input{width:100%;padding:12px 44px 12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.9rem;outline:none;transition:border-color 0.2s}
+.input-group input:focus{border-color:var(--accent)}
+.input-group input::placeholder{color:var(--text-muted)}
+.toggle-pw{position:absolute;right:12px;top:36px;background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;display:flex;align-items:center}
+.toggle-pw:hover{color:var(--text-dim)}
+.login-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.02em}
+.login-btn:hover{background:var(--accent-dim);transform:translateY(-1px);box-shadow:0 4px 16px rgba(108,140,255,0.3)}
+.login-btn:active{transform:translateY(0)}
+.login-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.error-msg{text-align:center;color:var(--red);font-size:0.82rem;margin-top:16px;display:none;animation:shake 0.4s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.login-links{text-align:center;margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.login-links a{font-size:0.72rem;color:var(--text-muted);cursor:pointer;text-decoration:none}
+.login-links a:hover{color:var(--accent)}
+.setup-note{text-align:center;font-size:0.75rem;color:var(--teal);margin-bottom:16px;display:none}
+
+/* ═══ APP ═══ */
+#appView{display:none}
+
+/* Store tabs */
+.store-tabs{display:flex;align-items:center;gap:6px;padding:12px 24px 0;flex-wrap:wrap}
+.store-tab{padding:8px 18px;border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;background:var(--surface);color:var(--text-dim);font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:6px}
+.store-tab:hover{color:var(--text)}
+.store-tab.active{background:var(--surface2);color:var(--accent);border-color:var(--accent-dim)}
+.store-tab .perm-tag{font-size:0.6rem;padding:1px 6px;border-radius:4px;background:var(--surface3);color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:0.04em}
+.store-tab.active .perm-tag.edit{color:var(--green)}
+.store-tab.active .perm-tag.view{color:var(--text-dim)}
+.user-chip{margin-left:auto;font-size:0.75rem;color:var(--text-muted);display:flex;align-items:center;gap:8px}
+.user-chip .uname{color:var(--text-dim);font-weight:600}
+.admin-star{color:#ffd700}
+
+/* Key */
+.key-section{padding:12px 24px 8px;border-bottom:1px solid var(--border)}
+.key-title{font-size:0.7rem;font-weight:700;color:var(--text-muted);letter-spacing:0.04em;margin-bottom:8px}
+.key-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:0.75rem;color:var(--text-dim)}
+.key-item{display:flex;align-items:center;gap:5px}
+.key-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.key-sep{width:1px;height:16px;background:var(--border)}
+
+/* Toolbar */
+.toolbar{padding:10px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.search-box{padding:7px 12px 7px 30px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.8rem;width:200px;outline:none;transition:border-color 0.15s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235c5f75' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:10px center}
+.search-box:focus{border-color:var(--accent)}
+.search-box::placeholder{color:var(--text-muted)}
+.toolbar-right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.75rem;font-weight:500;cursor:pointer;transition:all 0.15s;white-space:nowrap}
+.btn:hover{background:var(--surface3);border-color:var(--border-light)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-dim)}
+.btn.danger{color:var(--red);border-color:rgba(255,107,122,0.25)}
+.btn.danger:hover{background:rgba(255,107,122,0.08)}
+.btn.teal{color:var(--teal);border-color:rgba(45,212,191,0.3)}
+.btn.teal:hover{background:rgba(45,212,191,0.08)}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.view-only-banner{padding:6px 24px;background:rgba(250,204,21,0.06);border-bottom:1px solid rgba(250,204,21,0.2);font-size:0.72rem;color:#facc15;display:none}
+
+/* Table */
+.table-wrap{height:calc(100vh - 200px);overflow:auto}
+table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:0.78rem}
+thead th{position:sticky;top:0;z-index:20;background:var(--surface);padding:10px 12px;text-align:left;font-weight:600;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);border-bottom:1px solid var(--border);border-right:1px solid rgba(46,49,70,0.35);white-space:nowrap}
+thead th:last-child{border-right:none}
+thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4),thead th:nth-child(5){position:sticky;z-index:30;background:var(--surface)}
+thead th:nth-child(1){left:0;min-width:90px}
+thead th:nth-child(2){left:90px;min-width:100px}
+thead th:nth-child(3){left:190px;min-width:75px;text-align:center}
+thead th:nth-child(4){left:265px;min-width:85px;text-align:center}
+thead th:nth-child(5){left:350px;min-width:85px;text-align:center;border-right:1px solid rgba(108,140,255,0.25)}
+
+tbody td{padding:8px 12px;border-bottom:1px solid rgba(46,49,70,0.35);border-right:1px solid rgba(46,49,70,0.35);white-space:nowrap}
+tbody td:last-child{border-right:none}
+tbody td:nth-child(1),tbody td:nth-child(2),tbody td:nth-child(3),tbody td:nth-child(4),tbody td:nth-child(5){position:sticky;z-index:10;background:var(--bg)}
+tbody td:nth-child(1){left:0;min-width:90px}
+tbody td:nth-child(2){left:90px;min-width:100px}
+tbody td:nth-child(3){left:190px;min-width:75px;text-align:center;font-weight:600}
+tbody td:nth-child(4){left:265px;min-width:85px;text-align:center;font-weight:600}
+tbody td:nth-child(5){left:350px;min-width:85px;text-align:center;font-weight:600;border-right:1px solid rgba(108,140,255,0.25);cursor:pointer}
+tbody td:nth-child(5):hover{background:var(--surface2)}
+
+tbody td.date-cell{text-align:center;cursor:pointer;min-width:55px;transition:background 0.1s;font-weight:600;font-size:0.78rem}
+tbody td.date-cell:hover{background:var(--surface2)}
+tbody td.date-cell.no-edit{cursor:default}
+thead th.date-col{text-align:center;min-width:55px}
+tbody tr:hover td{background:var(--surface)}
+tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:nth-child(3),tbody tr:hover td:nth-child(4),tbody tr:hover td:nth-child(5){background:var(--surface)}
+
+/* Name badges */
+.name-badge{display:inline-block;padding:3px 10px;border-radius:5px;font-size:0.75rem;font-weight:600;border:1px solid}
+.name-green{color:#4ade80;border-color:rgba(74,222,128,0.35);background:rgba(74,222,128,0.08)}
+.name-yellow{color:#facc15;border-color:rgba(250,204,21,0.35);background:rgba(250,204,21,0.08)}
+.name-orange{color:#f59e0b;border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.08)}
+.name-red{color:#ff6b7a;border-color:rgba(255,107,122,0.35);background:rgba(255,107,122,0.08)}
+.name-blue{color:#6c8cff;border-color:rgba(108,140,255,0.35);background:rgba(108,140,255,0.08)}
+.name-purple{color:#a78bfa;border-color:rgba(167,139,250,0.35);background:rgba(167,139,250,0.08)}
+.name-perfect{color:#ffd700;border-color:rgba(255,215,0,0.4);background:linear-gradient(135deg,rgba(255,215,0,0.1),rgba(255,180,0,0.05));text-shadow:0 0 8px rgba(255,215,0,0.3);animation:shimmer 3s ease-in-out infinite}
+@keyframes shimmer{0%,100%{text-shadow:0 0 8px rgba(255,215,0,0.3)}50%{text-shadow:0 0 16px rgba(255,215,0,0.6),0 0 30px rgba(255,215,0,0.2)}}
+.name-terminated{color:#ff6b7a;border-color:rgba(255,107,122,0.35);background:rgba(255,107,122,0.08);text-decoration:line-through}
+
+/* Cell value colors */
+.val-point{color:#f59e0b}
+.val-one{color:#ff6b7a}
+.val-excused{color:#6c8cff}
+.val-usl{color:#2dd4bf}
+.val-1st{color:#6c8cff}
+.val-2nd{color:#a78bfa}
+.val-final{color:#ff6b7a}
+.val-term{color:#ff6b7a}
+.usl-mins-tag{font-size:0.62rem;color:var(--teal);opacity:0.8;display:block;margin-top:1px}
+
+/* Point column colors */
+.pts-green{color:#4ade80}
+.pts-yellow{color:#facc15}
+.pts-orange{color:#f59e0b}
+.pts-red{color:#ff6b7a}
+.pts-zero{color:var(--text-muted)}
+.usl-cell{color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:0.72rem}
+.usl-cell.usl-low{color:#f59e0b}
+.usl-cell.usl-empty{color:var(--red)}
+
+/* Modals */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.active{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.5);animation:fadeUp 0.25s ease both}
+.modal h3{font-size:1rem;font-weight:700;margin-bottom:4px}
+.modal .subtitle{font-size:0.8rem;color:var(--text-muted);margin-bottom:18px}
+.modal-btns{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.modal-btns .btn{font-size:0.72rem;padding:5px 10px}
+.modal-section-label{font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.modal input[type=text],.modal input[type=email],.modal input[type=password],.modal input[type=number],.modal select{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.85rem;outline:none}
+.modal input:focus,.modal select:focus{border-color:var(--accent)}
+.modal label.fld{display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px}
+.fld-row{margin-bottom:14px}
+
+.import-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:500px;max-width:92vw;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,0.5);animation:fadeUp 0.25s ease both}
+.drop-zone{border:2px dashed var(--border);border-radius:12px;padding:44px 20px;cursor:pointer;transition:all 0.2s;margin-bottom:14px}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:var(--accent-glow)}
+.drop-zone p{color:var(--text-muted);font-size:0.85rem}
+.drop-zone p strong{color:var(--text)}
+.import-preview{display:none;text-align:left;margin-top:14px;max-height:220px;overflow-y:auto;font-size:0.8rem;background:var(--bg);border-radius:8px;padding:12px}
+.import-preview table{font-size:0.75rem;width:100%}
+.import-preview th{color:var(--text-muted);padding:3px 8px;font-size:0.68rem}
+.import-preview td{padding:3px 8px}
+
+/* Admin panel */
+.admin-list{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:14px;max-height:220px;overflow-y:auto}
+.admin-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;font-size:0.8rem}
+.admin-item:hover{background:var(--surface2)}
+.admin-item .meta{font-size:0.68rem;color:var(--text-muted);margin-top:2px}
+.perm-select{padding:4px 8px !important;font-size:0.72rem !important;width:auto !important}
+.perm-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px;font-size:0.78rem}
+.migrate-box{background:rgba(45,212,191,0.04);border:1px solid rgba(45,212,191,0.2);border-radius:10px;padding:14px;margin-bottom:22px}
+
+.empty-state{text-align:center;padding:80px 20px;color:var(--text-muted)}
+.empty-state h2{font-size:1.1rem;color:var(--text-dim);margin-bottom:6px;font-weight:600}
+.empty-state p{font-size:0.85rem}
+
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;z-index:200;opacity:0;transform:translateY(8px);transition:all 0.25s;pointer-events:none;font-family:'DM Sans',sans-serif}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.error{border-color:rgba(255,107,122,0.4)}
+.toast.success{border-color:rgba(74,222,128,0.4)}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+          <circle cx="12" cy="16" r="1"/>
+        </svg>
+      </div>
+      <h1 class="login-title">Attendance Tracker</h1>
+      <p class="login-sub" id="loginSub">Sign in with your email and password</p>
+      <p class="setup-note" id="setupNote">First-time setup: this creates the master admin account.</p>
+      <div class="input-group">
+        <label>Email</label>
+        <input type="email" id="emailInput" placeholder="you@company.com" autocomplete="username">
+      </div>
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="current-password">
+        <button class="toggle-pw" onclick="togglePassword()" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <button class="login-btn" id="loginBtn" onclick="handleLogin()">Sign In</button>
+      <div class="error-msg" id="errorMsg"></div>
+      <div class="login-links">
+        <a onclick="forgotPassword()">Forgot password?</a>
+        <a onclick="toggleSetupMode()" id="setupToggle">First-time setup (create admin account)</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView">
+  <div class="store-tabs" id="storeTabs"></div>
+
+  <div class="key-section">
+    <div class="key-title">KEY</div>
+    <div class="key-row">
+      <div class="key-item"><div class="key-swatch" style="background:#ff6b7a"></div> 1 = NC/NS or Late 1pt</div>
+      <div class="key-item"><div class="key-swatch" style="background:#f59e0b"></div> 0.5 = Late</div>
+      <div class="key-item"><div class="key-swatch" style="background:#6c8cff"></div> Excused</div>
+      <div class="key-item"><div class="key-swatch" style="background:#2dd4bf"></div> USL (Unpaid Sick Leave)</div>
+      <div class="key-sep"></div>
+      <div class="key-item"><div class="key-swatch" style="background:#6c8cff"></div> 1st</div>
+      <div class="key-item"><div class="key-swatch" style="background:#a78bfa"></div> 2nd</div>
+      <div class="key-item"><div class="key-swatch" style="background:#ff6b7a"></div> Final</div>
+      <div class="key-item"><div class="key-swatch" style="background:#ef4444"></div> Terminated</div>
+    </div>
+  </div>
+
+  <div class="view-only-banner" id="viewOnlyBanner">&#128065; View-only access &mdash; you can browse this store's data but not make changes.</div>
+
+  <div class="toolbar">
+    <input class="search-box" id="searchBox" type="text" placeholder="Search budtenders..." oninput="renderTable()">
+    <div class="toolbar-right">
+      <button class="btn" id="hideBtn" onclick="toggleShowHidden()">Show Hidden</button>
+      <button class="btn" id="importBtn" onclick="openImport()">&#8593; Import</button>
+      <button class="btn" onclick="exportCSV()">&#8595; Export</button>
+      <button class="btn teal" onclick="exportUSL()">&#8595; USL Export</button>
+      <button class="btn danger" id="clearBtn" onclick="confirmClear()">Clear</button>
+      <button class="btn" id="adminBtn" onclick="openAdmin()" style="display:none">&#9881; Admin</button>
+      <button class="btn" onclick="changeMyPassword()">Password</button>
+      <button class="btn" onclick="handleSignOut()">&#128274; Sign Out</button>
+    </div>
+  </div>
+
+  <div class="table-wrap" id="tableWrap">
+    <div class="empty-state" id="emptyState">
+      <h2>No attendance data yet</h2>
+      <p>Click Import to upload a weekly Excel report</p>
+    </div>
+    <table id="mainTable" style="display:none">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3 id="editTitle" style="font-style:italic">Edit Entry</h3>
+    <p class="subtitle" id="editSubtitle"></p>
+    <div id="editNote" style="display:none;margin-bottom:14px;padding:8px 12px;background:rgba(108,140,255,0.06);border:1px solid rgba(108,140,255,0.15);border-radius:8px;font-size:0.75rem;color:var(--text-dim);line-height:1.5"></div>
+    <div class="fld-row">
+      <label class="fld">Value</label>
+      <input type="text" id="editInput" placeholder="e.g. 0.5, 1, Excused, USL, or blank to clear">
+    </div>
+    <div class="modal-btns" style="margin-bottom:8px">
+      <button class="btn" onclick="fillEdit('0.5')">0.5</button>
+      <button class="btn" onclick="fillEdit('1')">1</button>
+      <button class="btn" onclick="fillEdit('NC/NS')">NC/NS</button>
+      <button class="btn" onclick="fillEdit('Excused')">Excused</button>
+      <button class="btn" style="color:#2dd4bf;border-color:rgba(45,212,191,0.4)" onclick="fillEdit('USL')">USL</button>
+      <button class="btn" onclick="fillEdit('')">Clear</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" style="color:#6c8cff;border-color:rgba(108,140,255,0.4)" onclick="fillEdit('1st')">1st</button>
+      <button class="btn" style="color:#4ade80;border-color:rgba(74,222,128,0.4)" onclick="fillEdit('2nd')">2nd</button>
+      <button class="btn" style="color:#ff6b7a;border-color:rgba(255,107,122,0.4)" onclick="fillEdit('Final')">Final</button>
+      <button class="btn" style="color:#ef4444;border-color:rgba(239,68,68,0.4)" onclick="fillEdit('Terminated')">Terminated</button>
+      <button class="btn" style="color:#a78bfa;border-color:rgba(167,139,250,0.4)" onclick="fillEdit('Completed')">Completed</button>
+    </div>
+    <div class="fld-row" id="uslMinsRow" style="background:rgba(45,212,191,0.05);border:1px solid rgba(45,212,191,0.15);border-radius:10px;padding:12px">
+      <label class="fld" style="color:var(--teal)">USL Minutes Used This Day</label>
+      <input type="number" id="uslMinsInput" placeholder="e.g. 45 (leave blank if none)" min="0" step="1">
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">If lateness was due to a doctor's visit or illness, enter the minutes of Unpaid Sick Leave applied. Balance remaining: <span id="uslBalancePreview" style="color:var(--teal);font-weight:600">&mdash;</span></div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="toggleHidePerson()" id="hidePersonBtn" style="font-size:0.72rem">Hide Budtender</button>
+        <button class="btn danger" onclick="deletePerson()" style="font-size:0.72rem">Delete</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="closeEdit()">Cancel</button>
+        <button class="btn primary" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USL Balance Modal -->
+<div class="modal-overlay" id="uslModal">
+  <div class="modal">
+    <h3 style="color:var(--teal)">Unpaid Sick Leave Balance</h3>
+    <p class="subtitle" id="uslSubtitle"></p>
+    <div class="fld-row">
+      <label class="fld">Total USL Balance (minutes)</label>
+      <input type="number" id="uslBaseInput" placeholder="e.g. 3360" min="0" step="1">
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">This is the total balance allotted. Used minutes are subtracted automatically from logged USL entries.</div>
+    </div>
+    <div id="uslHistory" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;max-height:180px;overflow-y:auto;font-size:0.75rem"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeUslModal()">Cancel</button>
+      <button class="btn primary" onclick="saveUslBase()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="import-box">
+    <h3 style="margin-bottom:4px;font-weight:700;">Import Weekly Report</h3>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">Uploading to: <strong id="importStoreName" style="color:var(--accent)"></strong></p>
+    <div class="drop-zone" id="dropZone">
+      <p><strong>Drop .xlsx file here</strong><br>or click to browse</p>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+    </div>
+    <div class="import-preview" id="importPreview"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn" onclick="closeImport()">Cancel</button>
+      <button class="btn primary" id="confirmImportBtn" onclick="confirmImport()" style="display:none">Import Data</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Modal -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal" style="width:520px">
+    <h3>&#9881; Admin Panel</h3>
+    <p class="subtitle">Manage stores, users, and data</p>
+
+    <div class="modal-section-label">Stores</div>
+    <div class="admin-list" id="storeList"></div>
+    <div style="display:flex;gap:8px;margin-bottom:22px">
+      <input type="text" id="newStoreName" placeholder="New store name (e.g. SoHo)" style="flex:1">
+      <button class="btn primary" onclick="addStore()">Add Store</button>
+    </div>
+
+    <div class="modal-section-label">Users</div>
+    <div class="admin-list" id="userList"></div>
+    <button class="btn primary" onclick="openUserEditor(null)" style="width:100%;margin-bottom:22px">+ Add User</button>
+
+    <div class="modal-section-label">Data Migration</div>
+    <div class="migrate-box">
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px;line-height:1.5">One-time import of your original (v1) tracker data into a store. Your old data is left untouched &mdash; this copies it.</div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="migrateStoreName" placeholder="Store to migrate into (e.g. SoHo)" style="flex:1">
+        <button class="btn teal" id="migrateBtn" onclick="migrateV1()">Migrate V1 Data</button>
+      </div>
+      <div id="migrateStatus" style="font-size:0.72rem;color:var(--teal);margin-top:8px;display:none"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeAdmin()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Editor Modal -->
+<div class="modal-overlay" id="userEditorModal">
+  <div class="modal">
+    <h3 id="userEditorTitle">Add User</h3>
+    <p class="subtitle">Set credentials and per-store permissions</p>
+    <div class="fld-row">
+      <label class="fld">Email</label>
+      <input type="email" id="ueEmail" placeholder="person@company.com" autocomplete="off">
+    </div>
+    <div class="fld-row">
+      <label class="fld">Display Name</label>
+      <input type="text" id="ueName" placeholder="e.g. Sam" autocomplete="off">
+    </div>
+    <div class="fld-row" id="uePasswordRow">
+      <label class="fld">Temporary Password <span style="text-transform:none;font-weight:400">(min 6 characters &mdash; they can change it later)</span></label>
+      <input type="password" id="uePassword" placeholder="temporary password" autocomplete="new-password">
+    </div>
+    <div class="fld-row" id="ueResetRow" style="display:none">
+      <button class="btn" onclick="sendResetToUser()" style="width:100%">Send Password Reset Email</button>
+    </div>
+    <div class="fld-row">
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer">
+        <input type="checkbox" id="ueAdmin" style="width:auto"> Admin (full access to all stores + user management)
+      </label>
+    </div>
+    <div id="uePermsSection">
+      <div class="modal-section-label">Store Permissions</div>
+      <div id="uePermsGrid"></div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn danger" id="ueDeleteBtn" onclick="revokeUser()" style="display:none">Revoke Access</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="closeUserEditor()">Cancel</button>
+        <button class="btn primary" onclick="saveUser()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+// FIREBASE
+// ═══════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAqSHQ7z3KJxysgxpSLs58rbRihi6N_aH4",
+  authDomain: "attendance-tracker-c4c8e.firebaseapp.com",
+  databaseURL: "https://attendance-tracker-c4c8e-default-rtdb.firebaseio.com",
+  projectId: "attendance-tracker-c4c8e",
+  storageBucket: "attendance-tracker-c4c8e.firebasestorage.app",
+  messagingSenderId: "250155303602",
+  appId: "1:250155303602:web:6025f13c4ad04c23a6bfab"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+const rootRef = db.ref('trackerV2');
+const usersRef = rootRef.child('users');
+const storesRef = rootRef.child('stores');
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let currentUser = null;      // { uid, email, displayName, isAdmin, stores:{storeId:'view'|'edit'} }
+let allUsers = {};
+let allStores = {};
+let currentStoreId = null;
+let attendanceData = {};
+let allDates = [];
+let editingPerson = null;
+let editingDate = null;
+let pendingImport = null;
+let uslEditingPerson = null;
+let editingUserUid = null;
+let showHidden = false;
+let setupMode = false;
+let bootstrapping = false;
+let storeListeners = {};     // storeId -> callback ref for detach
+let adminStoresAttached = false;
+let userRecordAttached = false;
+
+// ═══════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════
+function togglePassword() {
+  const i = document.getElementById('passwordInput');
+  i.type = i.type === 'password' ? 'text' : 'password';
+}
+
+function toggleSetupMode() {
+  setupMode = !setupMode;
+  document.getElementById('setupNote').style.display = setupMode ? 'block' : 'none';
+  document.getElementById('loginBtn').textContent = setupMode ? 'Create Admin Account' : 'Sign In';
+  document.getElementById('loginSub').style.display = setupMode ? 'none' : '';
+  document.getElementById('setupToggle').textContent = setupMode ? 'Back to sign in' : 'First-time setup (create admin account)';
+  hideErr();
+}
+
+function showErr(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideErr() { document.getElementById('errorMsg').style.display = 'none'; }
+
+function friendlyAuthError(err) {
+  const c = err.code || '';
+  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found')) return 'Incorrect email or password.';
+  if (c.includes('invalid-email')) return 'That email address is not valid.';
+  if (c.includes('too-many-requests')) return 'Too many attempts. Try again in a few minutes.';
+  if (c.includes('email-already-in-use')) return 'An account with that email already exists.';
+  if (c.includes('weak-password')) return 'Password must be at least 6 characters.';
+  if (c.includes('network')) return 'Network error. Check your connection.';
+  return err.message || 'Something went wrong.';
+}
+
+async function handleLogin() {
+  const email = document.getElementById('emailInput').value.trim();
+  const pw = document.getElementById('passwordInput').value;
+  if (!email || !pw) { showErr('Enter your email and password.'); return; }
+  hideErr();
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  try {
+    if (setupMode) {
+      bootstrapping = true;
+      const cred = await auth.createUserWithEmailAndPassword(email, pw);
+      const uid = cred.user.uid;
+      try {
+        await usersRef.child(uid).set({
+          email: email,
+          displayName: email.split('@')[0],
+          isAdmin: true,
+          stores: {}
+        });
+        bootstrapping = false;
+        setupMode = false;
+        onSignedIn(cred.user); // proceed into app
+        toast('Admin account created', 'success');
+      } catch(writeErr) {
+        // users node already exists -> setup was already done; clean up
+        try { await cred.user.delete(); } catch(e) {}
+        await auth.signOut();
+        bootstrapping = false;
+        showErr('Setup was already completed. Ask an existing admin to create your account.');
+      }
+    } else {
+      await auth.signInWithEmailAndPassword(email, pw);
+      // onAuthStateChanged handles the rest
+    }
+  } catch(err) {
+    console.error('Auth error:', err);
+    bootstrapping = false;
+    showErr(friendlyAuthError(err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function forgotPassword() {
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email) { showErr('Enter your email above first, then click Forgot password.'); return; }
+  try {
+    await auth.sendPasswordResetEmail(email);
+    hideErr();
+    toast('Password reset email sent to ' + email, 'success');
+  } catch(err) { showErr(friendlyAuthError(err)); }
+}
+
+async function changeMyPassword() {
+  const cur = prompt('Enter your current password:');
+  if (!cur) return;
+  const npw = prompt('Enter your new password (min 6 characters):');
+  if (!npw) return;
+  if (npw.length < 6) { toast('Password must be at least 6 characters', 'error'); return; }
+  try {
+    const user = auth.currentUser;
+    const cred = firebase.auth.EmailAuthProvider.credential(user.email, cur);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(npw);
+    toast('Password updated', 'success');
+  } catch(err) { toast(friendlyAuthError(err), 'error'); }
+}
+
+function handleSignOut() { auth.signOut(); }
+
+document.getElementById('passwordInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+  hideErr();
+});
+document.getElementById('emailInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('passwordInput').focus();
+  hideErr();
+});
+
+auth.onAuthStateChanged(user => {
+  if (bootstrapping) return; // bootstrap flow handles itself
+  if (user) onSignedIn(user);
+  else showLogin();
+});
+
+function showLogin() {
+  teardownListeners();
+  currentUser = null;
+  document.getElementById('loginView').style.display = 'flex';
+  document.getElementById('appView').style.display = 'none';
+  document.getElementById('passwordInput').value = '';
+  setTimeout(() => document.getElementById('emailInput').focus(), 100);
+}
+
+async function onSignedIn(user) {
+  // fetch my permission record
+  try {
+    const snap = await usersRef.child(user.uid).once('value');
+    const rec = snap.val();
+    if (!rec) {
+      showErr('Your account exists but has no access yet. Ask an admin to set your permissions.');
+      await auth.signOut();
+      return;
+    }
+    currentUser = Object.assign({ uid: user.uid }, rec);
+    showApp();
+  } catch(err) {
+    console.error(err);
+    showErr('Could not load your access record: ' + err.message);
+    await auth.signOut();
+  }
+}
+
+// ═══════════════════════════════════════
+// PERMISSIONS
+// ═══════════════════════════════════════
+function canView(storeId) {
+  if (!currentUser) return false;
+  if (currentUser.isAdmin) return true;
+  const p = (currentUser.stores || {})[storeId];
+  return p === 'view' || p === 'edit';
+}
+function canEdit(storeId) {
+  if (!currentUser) return false;
+  if (currentUser.isAdmin) return true;
+  return (currentUser.stores || {})[storeId] === 'edit';
+}
+function visibleStores() {
+  return Object.entries(allStores).filter(([id]) => canView(id))
+    .sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+}
+
+// ═══════════════════════════════════════
+// LISTENERS / SYNC (rules-aware)
+// ═══════════════════════════════════════
+function teardownListeners() {
+  if (adminStoresAttached) { storesRef.off(); adminStoresAttached = false; }
+  Object.keys(storeListeners).forEach(id => storesRef.child(id).off());
+  storeListeners = {};
+  if (userRecordAttached && currentUser) { usersRef.child(currentUser.uid).off(); userRecordAttached = false; }
+  usersRef.off();
+  allStores = {}; attendanceData = {}; currentStoreId = null;
+}
+
+function showApp() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').style.display = 'block';
+  document.getElementById('adminBtn').style.display = currentUser.isAdmin ? '' : 'none';
+
+  attachStoreSync();
+
+  // live-update my own permission record
+  usersRef.child(currentUser.uid).on('value', snap => {
+    const rec = snap.val();
+    if (!rec) { auth.signOut(); return; }
+    const wasAdmin = currentUser.isAdmin;
+    currentUser = Object.assign({ uid: currentUser.uid }, rec);
+    document.getElementById('adminBtn').style.display = currentUser.isAdmin ? '' : 'none';
+    if (wasAdmin !== currentUser.isAdmin) { teardownStoreSyncOnly(); attachStoreSync(); }
+    else if (!currentUser.isAdmin) syncPerStoreListeners();
+    renderStoreTabs(); renderTable(); updateEditGating();
+  }, err => console.warn('own record listen:', err.message));
+  userRecordAttached = true;
+
+  // admin: keep the user list live
+  if (currentUser.isAdmin) {
+    usersRef.on('value', snap => {
+      allUsers = snap.val() || {};
+      if (document.getElementById('adminModal').classList.contains('active')) renderAdmin();
+    }, err => console.warn('users listen:', err.message));
+  }
+}
+
+function teardownStoreSyncOnly() {
+  if (adminStoresAttached) { storesRef.off('value'); adminStoresAttached = false; }
+  Object.keys(storeListeners).forEach(id => storesRef.child(id).off());
+  storeListeners = {};
+  allStores = {};
+}
+
+function attachStoreSync() {
+  if (currentUser.isAdmin) {
+    storesRef.on('value', snap => {
+      allStores = snap.val() || {};
+      afterStoresUpdate();
+    }, err => toast('Firebase error: ' + err.message, 'error'));
+    adminStoresAttached = true;
+  } else {
+    syncPerStoreListeners();
+  }
+}
+
+function syncPerStoreListeners() {
+  const permitted = Object.entries(currentUser.stores || {})
+    .filter(([,p]) => p === 'view' || p === 'edit').map(([id]) => id);
+  // detach revoked
+  Object.keys(storeListeners).forEach(id => {
+    if (!permitted.includes(id)) {
+      storesRef.child(id).off();
+      delete storeListeners[id];
+      delete allStores[id];
+    }
+  });
+  // attach new
+  permitted.forEach(id => {
+    if (storeListeners[id]) return;
+    storeListeners[id] = true;
+    storesRef.child(id).on('value', snap => {
+      const v = snap.val();
+      if (v) allStores[id] = v; else delete allStores[id];
+      afterStoresUpdate();
+    }, err => console.warn('store listen ' + id + ':', err.message));
+  });
+  afterStoresUpdate();
+}
+
+function afterStoresUpdate() {
+  if (!currentStoreId || !allStores[currentStoreId] || !canView(currentStoreId)) {
+    const vis = visibleStores();
+    currentStoreId = vis.length ? vis[0][0] : null;
+  }
+  attendanceData = currentStoreId && allStores[currentStoreId] ? (allStores[currentStoreId].attendance || {}) : {};
+  renderStoreTabs();
+  rebuildDates(); renderTable(); updateEditGating();
+}
+
+function switchStore(id) {
+  if (!canView(id)) return;
+  currentStoreId = id;
+  attendanceData = allStores[id] ? (allStores[id].attendance || {}) : {};
+  renderStoreTabs();
+  rebuildDates(); renderTable(); updateEditGating();
+}
+
+function renderStoreTabs() {
+  const host = document.getElementById('storeTabs');
+  const vis = visibleStores();
+  let html = vis.map(([id, s]) => {
+    const perm = currentUser.isAdmin ? 'edit' : (currentUser.stores||{})[id];
+    return `<div class="store-tab ${id===currentStoreId?'active':''}" onclick="switchStore('${id}')">
+      ${esc(s.name)} <span class="perm-tag ${perm}">${perm === 'edit' ? 'edit' : 'view'}</span>
+    </div>`;
+  }).join('');
+  html += `<div class="user-chip"><span class="uname">${currentUser.isAdmin?'<span class="admin-star">&#9733;</span> ':''}${esc(currentUser.displayName || currentUser.email)}</span></div>`;
+  host.innerHTML = html;
+
+  if (!vis.length) {
+    document.getElementById('emptyState').innerHTML = '<h2>No store access</h2><p>Ask an admin to grant you access to a store.</p>';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('mainTable').style.display = 'none';
+  }
+}
+
+function updateEditGating() {
+  const editable = currentStoreId && canEdit(currentStoreId);
+  document.getElementById('importBtn').disabled = !editable;
+  document.getElementById('clearBtn').disabled = !editable;
+  document.getElementById('viewOnlyBanner').style.display = (currentStoreId && !editable) ? 'block' : 'none';
+}
+
+function saveStoreData() {
+  if (!currentStoreId) return;
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  storesRef.child(currentStoreId).child('attendance').set(attendanceData)
+    .catch(err => toast('Save failed: ' + err.message, 'error'));
+}
+
+// ═══════════════════════════════════════
+// IMPORT
+// ═══════════════════════════════════════
+function openImport() {
+  if (!currentStoreId) { toast('No store selected', 'error'); return; }
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  document.getElementById('importStoreName').textContent = allStores[currentStoreId] ? allStores[currentStoreId].name : '';
+  document.getElementById('importModal').classList.add('active');
+  pendingImport = null;
+  document.getElementById('importPreview').style.display = 'none';
+  document.getElementById('confirmImportBtn').style.display = 'none';
+}
+function closeImport() { document.getElementById('importModal').classList.remove('active'); pendingImport = null; }
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) processFile(e.target.files[0]); fileInput.value = ''; });
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { toast('File appears empty', 'error'); return; }
+      console.log('=== IMPORT DEBUG ===');
+      console.log('Columns:', Object.keys(rows[0]));
+      console.log('Sample rows:', rows.slice(0, 3));
+      const cols = Object.keys(rows[0]);
+      const nameCol = cols.find(c => /^name$/i.test(c.trim())) || cols.find(c => /name/i.test(c));
+      const dateCol = cols.find(c => /^date$/i.test(c.trim())) || cols.find(c => /date/i.test(c));
+      const typeCol = cols.find(c => /^type$/i.test(c.trim())) || cols.find(c => /type/i.test(c));
+      if (!nameCol || !dateCol || !typeCol) {
+        const fnCol = cols.find(c => /first.?name/i.test(c));
+        const lnCol = cols.find(c => /last.?name/i.test(c));
+        if (fnCol && lnCol) { parseGrid(rows, fnCol, lnCol, cols); return; }
+        toast('Could not detect Name/Date/Type columns. Check console.', 'error'); return;
+      }
+      parseIncidentLog(rows, nameCol, dateCol, typeCol);
+    } catch(err) { console.error(err); toast('Error: ' + err.message, 'error'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseIncidentLog(rows, nameCol, dateCol, typeCol) {
+  const parsed = {};
+  rows.forEach(row => {
+    const name = (row[nameCol]||'').toString().trim();
+    const rawDate = row[dateCol];
+    const type = (row[typeCol]||'').toString().trim().toLowerCase();
+    if (!name || !rawDate) return;
+    let ds = '';
+    if (typeof rawDate === 'number') { const d = XLSX.SSF.parse_date_code(rawDate); ds = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }
+    else { const d = new Date(rawDate); ds = !isNaN(d) ? d.toISOString().split('T')[0] : rawDate.toString(); }
+    const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {}, notes: {} };
+    const val = mapType(type, row);
+    if (val) {
+      parsed[sk].dates[ds] = val;
+      const lateInfo = (row['Late/Early']||row['Late']||row['late']||'').toString().trim();
+      const shiftTime = (row['Shift Time']||'').toString().trim();
+      const clockTime = (row['Clock In/Out Time']||'').toString().trim();
+      let note = type;
+      if (lateInfo) note += ' (' + lateInfo + ')';
+      if (shiftTime) note += ' | Shift: ' + shiftTime;
+      if (clockTime) note += ' | Clocked: ' + clockTime;
+      parsed[sk].notes[ds] = note;
+    }
+  });
+  showPreview(parsed);
+}
+
+function mapType(type, row) {
+  // Skip brand ambassador shifts entirely - check ALL column values
+  const allVals = Object.values(row).map(v => (v||'').toString().toLowerCase()).join(' ');
+  if (/brand.?ambassador/i.test(allVals) || /lead.?brand/i.test(allVals)) return null;
+
+  if (/no.?show/i.test(type)) return '1';
+  if (/late/i.test(type) && /clock.?in/i.test(type)) {
+    const lv = row['Late']||row['late']||row['Late/Early']||'';
+    const m = parseMins(lv.toString());
+    if (m !== null && m < 8) return null; // under 8 minutes, ignore
+    return '0.5';
+  }
+  if (/late.?clock.?out/i.test(type)) return null;
+  if (/early/i.test(type)) return null;
+  if (/left.?early/i.test(type)) return null;
+  if (/late/i.test(type) && !/clock.?in/i.test(type)) return null;
+  return null;
+}
+
+function parseMins(s) {
+  if (!s) return null;
+  const minMatch = s.match(/(\d+)\s*min/i);
+  if (minMatch) {
+    let total = parseInt(minMatch[1]) || 0;
+    const hrMatch = s.match(/(\d+)\s*hour/i);
+    if (hrMatch) total += (parseInt(hrMatch[1]) || 0) * 60;
+    return total;
+  }
+  const hms = s.match(/(\d+):(\d+)/);
+  if (hms) return (parseInt(hms[1])||0)*60+(parseInt(hms[2])||0);
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function parseGrid(rows, fnCol, lnCol, cols) {
+  const parsed = {};
+  const dc = cols.filter(c => c !== fnCol && c !== lnCol && !/annual|month|pts|point|write|usl|sick/i.test(c));
+  rows.forEach(row => {
+    const fn=(row[fnCol]||'').toString().trim(), ln=(row[lnCol]||'').toString().trim();
+    if (!fn&&!ln) return;
+    const name = ln ? `${ln}, ${fn}` : fn;
+    const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {} };
+    dc.forEach(d => { const v=(row[d]||'').toString().trim(); if (v) parsed[sk].dates[d]=v; });
+  });
+  showPreview(parsed);
+}
+
+function showPreview(parsed) {
+  pendingImport = parsed;
+  const names = Object.keys(parsed);
+  let ti = 0; names.forEach(n => ti += Object.keys(parsed[n].dates).length);
+  const p = document.getElementById('importPreview');
+  p.innerHTML = `<p style="margin-bottom:8px"><strong>${names.length}</strong> budtenders, <strong>${ti}</strong> incidents</p>
+    <table><thead><tr><th>Name</th><th>#</th></tr></thead><tbody>
+    ${names.slice(0,15).map(n => `<tr><td>${esc(parsed[n].displayName||n)}</td><td>${Object.keys(parsed[n].dates).length}</td></tr>`).join('')}
+    ${names.length>15?`<tr><td colspan="2" style="color:var(--text-muted)">...+${names.length-15} more</td></tr>`:''}
+    </tbody></table>`;
+  p.style.display = 'block';
+  document.getElementById('confirmImportBtn').style.display = 'inline-flex';
+}
+
+function confirmImport() {
+  if (!pendingImport) return;
+  Object.entries(pendingImport).forEach(([k,v]) => {
+    if (!attendanceData[k]) attendanceData[k] = { displayName: v.displayName, dates: {}, notes: {} };
+    if (!attendanceData[k].dates) attendanceData[k].dates = {};
+    if (!attendanceData[k].notes) attendanceData[k].notes = {};
+    Object.assign(attendanceData[k].dates, v.dates);
+    if (v.notes) Object.assign(attendanceData[k].notes, v.notes);
+  });
+  saveStoreData(); rebuildDates(); renderTable(); closeImport();
+  toast(`Imported ${Object.keys(pendingImport).length} budtenders`, 'success');
+}
+
+// ═══════════════════════════════════════
+// POINTS / USL LOGIC
+// ═══════════════════════════════════════
+function rebuildDates() {
+  const s = new Set();
+  Object.values(attendanceData).forEach(p => { if (p.dates) Object.keys(p.dates).forEach(d => s.add(d)); });
+  allDates = Array.from(s).sort();
+}
+
+function getPoints(val) {
+  if (!val) return 0;
+  const v = val.toString().trim();
+  if (v === '1' || v === '1.0') return 1;
+  if (v === '0.5') return 0.5;
+  return 0; // USL, Excused, write-ups = 0 points
+}
+
+function getWriteupPts(dates) {
+  const writeupTypes = ['1st','2nd','final','terminated','term','completed'];
+  let lastWriteupDate = null;
+  const sortedEntries = Object.entries(dates).sort((a,b) => a[0].localeCompare(b[0]));
+  sortedEntries.forEach(([d, v]) => {
+    const val = (v||'').toString().trim().toLowerCase();
+    if (writeupTypes.includes(val)) lastWriteupDate = d;
+  });
+  if (!lastWriteupDate) return 0;
+  let pts = 0;
+  sortedEntries.forEach(([d, v]) => { if (d > lastWriteupDate) pts += getPoints(v); });
+  return pts;
+}
+
+function getAnnualPts(dates) {
+  let pts = 0;
+  Object.values(dates).forEach(v => { pts += getPoints(v); });
+  return pts;
+}
+
+function getUslUsed(person) {
+  if (!person.usl) return 0;
+  return Object.values(person.usl).reduce((a,b) => a + (parseInt(b)||0), 0);
+}
+function getUslRemaining(person) {
+  const base = parseInt(person.uslBase) || 0;
+  return base - getUslUsed(person);
+}
+function fmtMins(m) {
+  const neg = m < 0; m = Math.abs(m);
+  const h = Math.floor(m/60), r = m%60;
+  return (neg?'-':'') + (h ? h + 'h ' + r + 'm' : r + 'm');
+}
+
+function isTerminated(dates) {
+  const vals = Object.values(dates);
+  return vals.some(v => /^(terminated|term)$/i.test((v||'').toString().trim()));
+}
+
+function getLatestWriteup(dates) {
+  const writeupTypes = ['1st','2nd','final','terminated','term','completed'];
+  let latest = null;
+  Object.entries(dates).sort((a,b) => a[0].localeCompare(b[0])).forEach(([d, v]) => {
+    const val = (v||'').toString().trim().toLowerCase();
+    if (writeupTypes.includes(val)) latest = val;
+  });
+  return latest;
+}
+
+function getNameColor(annualPts, terminated, dates) {
+  if (terminated) return 'name-terminated';
+  const wu = dates ? getLatestWriteup(dates) : null;
+  if (wu === 'final') return 'name-red';
+  if (wu === '2nd') return 'name-purple';
+  if (wu === '1st') return 'name-blue';
+  if (annualPts >= 3) return 'name-red';
+  if (annualPts >= 2) return 'name-orange';
+  if (annualPts >= 1) return 'name-yellow';
+  if (annualPts > 0) return 'name-green';
+  return 'name-perfect';
+}
+
+function ptsColor(pts) {
+  if (pts >= 3) return 'pts-red';
+  if (pts >= 2) return 'pts-orange';
+  if (pts >= 1) return 'pts-yellow';
+  if (pts > 0) return 'pts-green';
+  return 'pts-zero';
+}
+
+function toggleShowHidden() {
+  showHidden = !showHidden;
+  const btn = document.getElementById('hideBtn');
+  btn.textContent = showHidden ? 'Hide Hidden' : 'Show Hidden';
+  btn.style.borderColor = showHidden ? 'rgba(108,140,255,0.4)' : '';
+  btn.style.color = showHidden ? '#6c8cff' : '';
+  renderTable();
+}
+
+function cellHtml(val, uslMins) {
+  let inner = '';
+  if (val) {
+    const v = val.toString().trim();
+    if (v === '0.5') inner = `<span class="val-point">0.5</span>`;
+    else if (v === '1' || v === '1.0') inner = `<span class="val-one">1</span>`;
+    else if (/^excused$/i.test(v)) inner = `<span class="val-excused">Excused</span>`;
+    else if (/^usl$/i.test(v)) inner = `<span class="val-usl">USL</span>`;
+    else if (v === '1st') inner = `<span class="val-1st">1st</span>`;
+    else if (v === '2nd') inner = `<span class="val-2nd">2nd</span>`;
+    else if (/^final$/i.test(v)) inner = `<span class="val-final">Final</span>`;
+    else if (/^term/i.test(v)) inner = `<span class="val-term">TERM</span>`;
+    else inner = `<span style="color:var(--text-dim)">${esc(v)}</span>`;
+  }
+  if (uslMins) inner += `<span class="usl-mins-tag">${uslMins}m USL</span>`;
+  return inner;
+}
+
+function fmtDate(d) {
+  try {
+    const dt = new Date(d + 'T00:00:00');
+    return (dt.getMonth()+1).toString().padStart(2,'0') + '/' + dt.getDate().toString().padStart(2,'0');
+  } catch(e) { return d; }
+}
+
+function renderTable() {
+  if (!currentStoreId) return;
+  const q = (document.getElementById('searchBox').value||'').toLowerCase();
+  const people = Object.entries(attendanceData).filter(([k,v])=>(v.displayName||k).toLowerCase().includes(q)).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0]));
+
+  if (!Object.keys(attendanceData).length) {
+    document.getElementById('emptyState').innerHTML = '<h2>No attendance data yet</h2><p>Click Import to upload a weekly Excel report</p>';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('mainTable').style.display = 'none'; return;
+  }
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('mainTable').style.display = '';
+
+  const editable = canEdit(currentStoreId);
+
+  document.getElementById('tableHead').innerHTML = `<tr>
+    <th>First Name</th><th>Last Name</th><th>Annual Pts</th><th>Write-Up Pts</th><th title="Unpaid Sick Leave remaining">USL Left</th>
+    ${allDates.map(d=>`<th class="date-col">${fmtDate(d)}</th>`).join('')}
+  </tr>`;
+
+  document.getElementById('tableBody').innerHTML = people.map(([key,person])=>{
+    const name = person.displayName || key;
+    let fn = '', ln = '';
+    if (name.includes(',')) {
+      const parts = name.split(',').map(s=>s.trim());
+      ln = parts[0]; fn = parts[1] || '';
+    } else {
+      const parts = name.split(' ').map(s=>s.trim()).filter(Boolean);
+      if (parts.length >= 2) { fn = parts[0]; ln = parts.slice(1).join(' '); }
+      else { fn = parts[0] || name; ln = ''; }
+    }
+    const dates = person.dates || {};
+    const usl = person.usl || {};
+    const ap = getAnnualPts(dates);
+    const wp = getWriteupPts(dates);
+    if (!showHidden && person.hidden) return '';
+
+    const termed = isTerminated(dates);
+    const nc = getNameColor(ap, termed, dates);
+    const hasBase = person.uslBase !== undefined && person.uslBase !== null && person.uslBase !== '';
+    const remaining = getUslRemaining(person);
+    const uslClass = !hasBase ? 'usl-cell' : remaining <= 0 ? 'usl-cell usl-empty' : remaining < 120 ? 'usl-cell usl-low' : 'usl-cell';
+    const uslDisplay = hasBase ? fmtMins(remaining) : '<span style="color:var(--text-muted)">set</span>';
+    const kesc = key.replace(/'/g,"\\'");
+
+    return `<tr>
+      <td><span class="name-badge ${nc}">${esc(fn)}</span></td>
+      <td><span class="name-badge ${nc}">${esc(ln)}</span></td>
+      <td class="${ptsColor(ap)}">${ap > 0 ? ap % 1 === 0 ? ap : ap.toFixed(1) : '0'}</td>
+      <td class="${ptsColor(wp)}">${wp > 0 ? wp % 1 === 0 ? wp : wp.toFixed(1) : '0'}</td>
+      <td class="${uslClass}" onclick="openUslModal('${kesc}')" title="Click to set USL balance / view history">${uslDisplay}</td>
+      ${allDates.map(d => {
+        const v = dates[d] || '';
+        const um = usl[d] || 0;
+        return `<td class="date-cell ${editable?'':'no-edit'}" ${editable?`onclick="openEdit('${kesc}','${d}')"`:''}>${cellHtml(v, um)}</td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+// EDIT ENTRY
+// ═══════════════════════════════════════
+function fmtDateLong(d) {
+  try {
+    const dt = new Date(d + 'T00:00:00');
+    return (dt.getMonth()+1).toString().padStart(2,'0') + '/' + dt.getDate().toString().padStart(2,'0') + '/' + dt.getFullYear();
+  } catch(e) { return d; }
+}
+
+function openEdit(pk,dt) {
+  if (!canEdit(currentStoreId)) return;
+  editingPerson = pk; editingDate = dt;
+  const p = attendanceData[pk];
+  const name = p ? (p.displayName||pk) : pk;
+  document.getElementById('editTitle').textContent = 'Edit Entry';
+  document.getElementById('editSubtitle').textContent = name + ' \u2014 ' + fmtDateLong(dt);
+  const input = document.getElementById('editInput');
+  input.value = (p && p.dates && p.dates[dt]) ? p.dates[dt] : '';
+  document.getElementById('uslMinsInput').value = (p && p.usl && p.usl[dt]) ? p.usl[dt] : '';
+  const noteEl = document.getElementById('editNote');
+  const note = (p && p.notes && p.notes[dt]) ? p.notes[dt] : '';
+  if (note) { noteEl.textContent = note; noteEl.style.display = 'block'; }
+  else { noteEl.style.display = 'none'; }
+  const rem = p ? getUslRemaining(p) : 0;
+  const hasBase = p && p.uslBase !== undefined && p.uslBase !== null && p.uslBase !== '';
+  document.getElementById('uslBalancePreview').textContent = hasBase ? fmtMins(rem) : 'not set (click USL Left column to set)';
+  document.getElementById('hidePersonBtn').textContent = (p && p.hidden) ? 'Unhide Budtender' : 'Hide Budtender';
+  document.getElementById('editModal').classList.add('active');
+  setTimeout(() => input.focus(), 100);
+}
+
+function fillEdit(val) { document.getElementById('editInput').value = val; }
+
+function saveEdit() {
+  if (!editingPerson || !editingDate) return;
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const val = document.getElementById('editInput').value.trim();
+  const uslMins = parseInt(document.getElementById('uslMinsInput').value) || 0;
+  if (!attendanceData[editingPerson]) attendanceData[editingPerson] = { displayName: editingPerson, dates: {} };
+  const p = attendanceData[editingPerson];
+  if (!p.dates) p.dates = {};
+  if (val) p.dates[editingDate] = val;
+  else delete p.dates[editingDate];
+  if (!p.usl) p.usl = {};
+  if (uslMins > 0) p.usl[editingDate] = uslMins;
+  else delete p.usl[editingDate];
+  if (!Object.keys(p.usl).length) delete p.usl;
+  saveStoreData(); rebuildDates(); renderTable(); closeEdit();
+}
+
+function closeEdit() { document.getElementById('editModal').classList.remove('active'); editingPerson = editingDate = null; }
+
+function toggleHidePerson() {
+  if (!editingPerson) return;
+  const p = attendanceData[editingPerson];
+  if (!p) return;
+  const name = p.displayName || editingPerson;
+  if (p.hidden) { p.hidden = false; toast(name + ' is now visible', 'success'); }
+  else {
+    if (!confirm('Hide ' + name + ' from the tracker?')) return;
+    p.hidden = true; toast(name + ' hidden', 'success');
+  }
+  saveStoreData(); renderTable(); closeEdit();
+}
+
+function deletePerson() {
+  if (!editingPerson) return;
+  const p = attendanceData[editingPerson];
+  const name = p ? (p.displayName || editingPerson) : editingPerson;
+  if (!confirm('Delete ' + name + ' and all their attendance data?')) return;
+  delete attendanceData[editingPerson];
+  saveStoreData(); rebuildDates(); renderTable(); closeEdit();
+  toast(name + ' deleted', 'success');
+}
+
+// ═══════════════════════════════════════
+// USL BALANCE MODAL
+// ═══════════════════════════════════════
+function openUslModal(pk) {
+  uslEditingPerson = pk;
+  const p = attendanceData[pk];
+  if (!p) return;
+  const name = p.displayName || pk;
+  const used = getUslUsed(p);
+  const base = parseInt(p.uslBase) || 0;
+  document.getElementById('uslSubtitle').textContent = name + ' \u2014 used ' + fmtMins(used) + (p.uslBase !== undefined ? ' of ' + fmtMins(base) : '');
+  document.getElementById('uslBaseInput').value = p.uslBase !== undefined && p.uslBase !== null ? p.uslBase : '';
+  const hist = document.getElementById('uslHistory');
+  const entries = p.usl ? Object.entries(p.usl).sort((a,b)=>b[0].localeCompare(a[0])) : [];
+  hist.innerHTML = entries.length
+    ? '<div style="color:var(--text-muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Usage History</div>' +
+      entries.map(([d,m]) => `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${fmtDateLong(d)}</span><span style="color:var(--teal)">${m}m</span></div>`).join('')
+    : '<span style="color:var(--text-muted)">No USL usage logged yet. Enter minutes in the day\'s edit window.</span>';
+  document.getElementById('uslModal').classList.add('active');
+}
+function closeUslModal() { document.getElementById('uslModal').classList.remove('active'); uslEditingPerson = null; }
+function saveUslBase() {
+  if (!uslEditingPerson) return;
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const p = attendanceData[uslEditingPerson];
+  if (!p) return;
+  const v = document.getElementById('uslBaseInput').value.trim();
+  if (v === '') delete p.uslBase;
+  else p.uslBase = parseInt(v) || 0;
+  saveStoreData(); renderTable(); closeUslModal();
+  toast('USL balance updated', 'success');
+}
+
+// ═══════════════════════════════════════
+// ADMIN: STORES, USERS, MIGRATION
+// ═══════════════════════════════════════
+function openAdmin() {
+  if (!currentUser.isAdmin) return;
+  renderAdmin();
+  document.getElementById('adminModal').classList.add('active');
+}
+function closeAdmin() { document.getElementById('adminModal').classList.remove('active'); }
+
+function renderAdmin() {
+  const sl = document.getElementById('storeList');
+  const stores = Object.entries(allStores);
+  sl.innerHTML = stores.length ? stores.map(([id,s]) => `
+    <div class="admin-item">
+      <div><strong>${esc(s.name)}</strong><div class="meta">${Object.keys(s.attendance||{}).length} budtenders</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn" style="font-size:0.68rem;padding:4px 8px" onclick="renameStore('${id}')">Rename</button>
+        <button class="btn danger" style="font-size:0.68rem;padding:4px 8px" onclick="removeStore('${id}')">Delete</button>
+      </div>
+    </div>`).join('') : '<div style="padding:10px;color:var(--text-muted);font-size:0.8rem">No stores yet. Add one below.</div>';
+
+  const ul = document.getElementById('userList');
+  const users = Object.entries(allUsers);
+  ul.innerHTML = users.length ? users.map(([uid,u]) => {
+    const perms = u.isAdmin ? '<span class="admin-star">&#9733;</span> Admin \u2014 all stores'
+      : Object.entries(u.stores||{}).filter(([,p])=>p&&p!=='none').map(([sid,p]) => `${allStores[sid]?esc(allStores[sid].name):sid}: ${p}`).join(', ') || 'No access';
+    return `<div class="admin-item">
+      <div><strong>${esc(u.displayName||u.email)}</strong><div class="meta">${esc(u.email||'')} \u2014 ${perms}</div></div>
+      <button class="btn" style="font-size:0.68rem;padding:4px 8px" onclick="openUserEditor('${uid}')">Edit</button>
+    </div>`;
+  }).join('') : '<div style="padding:10px;color:var(--text-muted);font-size:0.8rem">No users.</div>';
+}
+
+function storeKey(name) { return name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_'); }
+
+function addStore() {
+  const name = document.getElementById('newStoreName').value.trim();
+  if (!name) { toast('Enter a store name', 'error'); return; }
+  const id = storeKey(name);
+  if (allStores[id]) { toast('Store already exists', 'error'); return; }
+  storesRef.child(id).set({ name: name, attendance: {} })
+    .then(() => { document.getElementById('newStoreName').value = ''; toast('Store added', 'success'); })
+    .catch(err => toast('Error: ' + err.message, 'error'));
+}
+
+function renameStore(id) {
+  const s = allStores[id];
+  if (!s) return;
+  const name = prompt('New name for ' + s.name + ':', s.name);
+  if (!name || !name.trim()) return;
+  storesRef.child(id).child('name').set(name.trim())
+    .then(() => toast('Renamed', 'success'))
+    .catch(err => toast('Error: ' + err.message, 'error'));
+}
+
+function removeStore(id) {
+  const s = allStores[id];
+  if (!s) return;
+  if (!confirm('Delete store "' + s.name + '" and ALL its attendance data? This cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure?')) return;
+  storesRef.child(id).remove()
+    .then(() => toast('Store deleted', 'success'))
+    .catch(err => toast('Error: ' + err.message, 'error'));
+}
+
+// ─── V1 MIGRATION ───
+async function migrateV1() {
+  const nameInput = document.getElementById('migrateStoreName').value.trim();
+  if (!nameInput) { toast('Enter a store name to migrate into', 'error'); return; }
+  const btn = document.getElementById('migrateBtn');
+  const status = document.getElementById('migrateStatus');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.textContent = 'Reading V1 data...';
+  try {
+    const snap = await db.ref('attendance').once('value');
+    const old = snap.val();
+    if (!old || !Object.keys(old).length) {
+      status.textContent = 'No V1 data found at the old location.';
+      btn.disabled = false;
+      return;
+    }
+    const count = Object.keys(old).length;
+    const id = storeKey(nameInput);
+    const existing = allStores[id];
+    if (existing && Object.keys(existing.attendance||{}).length) {
+      if (!confirm('Store "' + existing.name + '" already has data. Merge V1 data into it? (V1 entries win on conflicts)')) {
+        btn.disabled = false; status.style.display = 'none'; return;
+      }
+      const merged = Object.assign({}, existing.attendance);
+      Object.entries(old).forEach(([k,v]) => {
+        if (!merged[k]) { merged[k] = v; return; }
+        merged[k].displayName = v.displayName || merged[k].displayName;
+        merged[k].dates = Object.assign({}, merged[k].dates||{}, v.dates||{});
+        merged[k].notes = Object.assign({}, merged[k].notes||{}, v.notes||{});
+        if (v.hidden !== undefined) merged[k].hidden = v.hidden;
+      });
+      await storesRef.child(id).child('attendance').set(merged);
+    } else {
+      await storesRef.child(id).set({ name: existing ? existing.name : nameInput, attendance: old });
+    }
+    status.textContent = 'Done! Migrated ' + count + ' budtenders into "' + nameInput + '". Your old V1 data was left untouched.';
+    toast('Migration complete: ' + count + ' budtenders', 'success');
+  } catch(err) {
+    console.error(err);
+    status.textContent = 'Migration failed: ' + err.message;
+    toast('Migration failed: ' + err.message, 'error');
+  }
+  btn.disabled = false;
+}
+
+// ─── USER EDITOR (Firebase Auth) ───
+function openUserEditor(uid) {
+  editingUserUid = uid;
+  const isNew = !uid;
+  const u = uid ? allUsers[uid] : null;
+  document.getElementById('userEditorTitle').textContent = isNew ? 'Add User' : 'Edit User: ' + (u.displayName||u.email);
+  document.getElementById('ueEmail').value = u ? (u.email||'') : '';
+  document.getElementById('ueEmail').disabled = !isNew;
+  document.getElementById('ueName').value = u ? (u.displayName||'') : '';
+  document.getElementById('uePassword').value = '';
+  document.getElementById('uePasswordRow').style.display = isNew ? '' : 'none';
+  document.getElementById('ueResetRow').style.display = isNew ? 'none' : '';
+  document.getElementById('ueAdmin').checked = u ? !!u.isAdmin : false;
+  document.getElementById('ueDeleteBtn').style.display = (isNew || uid === currentUser.uid) ? 'none' : '';
+  renderUePerms(u);
+  document.getElementById('ueAdmin').onchange = () => {
+    document.getElementById('uePermsSection').style.display = document.getElementById('ueAdmin').checked ? 'none' : '';
+  };
+  document.getElementById('uePermsSection').style.display = (u && u.isAdmin) ? 'none' : '';
+  document.getElementById('userEditorModal').classList.add('active');
+}
+function closeUserEditor() { document.getElementById('userEditorModal').classList.remove('active'); editingUserUid = null; }
+
+function renderUePerms(u) {
+  const grid = document.getElementById('uePermsGrid');
+  const stores = Object.entries(allStores);
+  grid.innerHTML = stores.length ? stores.map(([id,s]) => {
+    const cur = u && u.stores ? (u.stores[id] || 'none') : 'none';
+    return `<div class="perm-grid">
+      <span>${esc(s.name)}</span>
+      <select class="perm-select" data-store="${id}">
+        <option value="none" ${cur==='none'?'selected':''}>No access</option>
+        <option value="view" ${cur==='view'?'selected':''}>View only</option>
+        <option value="edit" ${cur==='edit'?'selected':''}>View + Edit</option>
+      </select>
+    </div>`;
+  }).join('') : '<div style="color:var(--text-muted);font-size:0.78rem;margin-bottom:10px">Create stores first to assign permissions.</div>';
+}
+
+let secondaryApp = null;
+function getSecondaryAuth() {
+  if (!secondaryApp) secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary');
+  return secondaryApp.auth();
+}
+
+async function saveUser() {
+  const email = document.getElementById('ueEmail').value.trim();
+  const name = document.getElementById('ueName').value.trim() || email.split('@')[0];
+  const pw = document.getElementById('uePassword').value;
+  const isAdmin = document.getElementById('ueAdmin').checked;
+  if (!email) { toast('Enter an email', 'error'); return; }
+  const isNew = !editingUserUid;
+  if (isNew && (!pw || pw.length < 6)) { toast('Set a temporary password (min 6 chars)', 'error'); return; }
+
+  const perms = {};
+  if (!isAdmin) {
+    document.querySelectorAll('#uePermsGrid .perm-select').forEach(sel => {
+      const v = sel.value;
+      if (v !== 'none') perms[sel.dataset.store] = v;
+    });
+  }
+
+  try {
+    if (isNew) {
+      // create the auth account via a secondary app so admin stays signed in
+      const secAuth = getSecondaryAuth();
+      const cred = await secAuth.createUserWithEmailAndPassword(email, pw);
+      const uid = cred.user.uid;
+      await secAuth.signOut();
+      await usersRef.child(uid).set({ email, displayName: name, isAdmin, stores: perms });
+      toast('User created. Give them their temporary password.', 'success');
+    } else {
+      const existing = allUsers[editingUserUid] || {};
+      await usersRef.child(editingUserUid).set({
+        email: existing.email || email,
+        displayName: name,
+        isAdmin,
+        stores: perms
+      });
+      toast('User updated', 'success');
+    }
+    closeUserEditor();
+  } catch(err) {
+    console.error(err);
+    toast(friendlyAuthError(err), 'error');
+  }
+}
+
+async function sendResetToUser() {
+  const u = allUsers[editingUserUid];
+  if (!u || !u.email) return;
+  try {
+    await auth.sendPasswordResetEmail(u.email);
+    toast('Reset email sent to ' + u.email, 'success');
+  } catch(err) { toast(friendlyAuthError(err), 'error'); }
+}
+
+function revokeUser() {
+  if (!editingUserUid || editingUserUid === currentUser.uid) return;
+  const u = allUsers[editingUserUid];
+  if (!confirm('Revoke all access for "' + (u.displayName||u.email) + '"? They will no longer be able to see or edit anything.')) return;
+  usersRef.child(editingUserUid).remove()
+    .then(() => { toast('Access revoked', 'success'); closeUserEditor(); })
+    .catch(err => toast('Error: ' + err.message, 'error'));
+}
+
+// ═══════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════
+function exportCSV() {
+  if (!Object.keys(attendanceData).length) { toast('No data', 'error'); return; }
+  rebuildDates();
+  const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
+  let csv = 'First Name,Last Name,Annual Pts,Write-Up Pts,USL Base (min),USL Used (min),USL Remaining (min),' + allDates.map(d=>fmtDate(d)).join(',') + '\n';
+  Object.entries(attendanceData).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
+    const name = p.displayName||k;
+    let fn = '', ln = '';
+    if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
+    else { const pts = name.split(' ').filter(Boolean); fn = pts[0]||''; ln = pts.slice(1).join(' '); }
+    const dates = p.dates||{};
+    const ap = getAnnualPts(dates), wp = getWriteupPts(dates);
+    const base = parseInt(p.uslBase)||0, used = getUslUsed(p);
+    csv += `"${fn}","${ln}",${ap},${wp},${base},${used},${base-used},${allDates.map(d=>{
+      let cell = dates[d]||'';
+      if (p.usl && p.usl[d]) cell += (cell?' ':'') + '[USL ' + p.usl[d] + 'm]';
+      return '"' + cell + '"';
+    }).join(',')}\n`;
+  });
+  downloadCSV(csv, `attendance_${storeKey(storeName)}_${new Date().toISOString().split('T')[0]}.csv`);
+  toast('CSV exported', 'success');
+}
+
+function exportUSL() {
+  if (!Object.keys(attendanceData).length) { toast('No data', 'error'); return; }
+  const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
+  let csv = 'Store,First Name,Last Name,USL Balance (min),USL Used (min),USL Remaining (min),USL Remaining (h:mm)\n';
+  Object.entries(attendanceData).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
+    const name = p.displayName||k;
+    let fn = '', ln = '';
+    if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
+    else { const pts = name.split(' ').filter(Boolean); fn = pts[0]||''; ln = pts.slice(1).join(' '); }
+    const base = parseInt(p.uslBase)||0;
+    const used = getUslUsed(p);
+    const rem = base - used;
+    const h = Math.floor(Math.abs(rem)/60), m = Math.abs(rem)%60;
+    const hmm = (rem<0?'-':'') + h + ':' + String(m).padStart(2,'0');
+    csv += `"${storeName}","${fn}","${ln}",${base},${used},${rem},${hmm}\n`;
+  });
+  downloadCSV(csv, `usl_balances_${storeKey(storeName)}_${new Date().toISOString().split('T')[0]}.csv`);
+  toast('USL balances exported', 'success');
+}
+
+function downloadCSV(csv, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = filename;
+  a.click();
+}
+
+function confirmClear() {
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'this store';
+  if (!confirm('Clear ALL attendance data for ' + storeName + '? Cannot be undone.')) return;
+  if (!confirm('Are you sure?')) return;
+  attendanceData = {};
+  saveStoreData(); rebuildDates(); renderTable();
+  toast('Data cleared for ' + storeName, 'success');
+}
+
+// ═══════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════
+function esc(s) {
+  return (s??'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg,type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type||'') + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+document.getElementById('editInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') saveEdit();
+});
+</script>
+</body>
+</html>
