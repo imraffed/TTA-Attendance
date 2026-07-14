@@ -1047,17 +1047,21 @@ function getAnnualPts(dates) {
 }
 
 function getUslUsed(person) {
-  if (!person.usl) return 0;
-  return Object.values(person.usl).reduce((a,b) => a + (parseInt(b)||0), 0);
+  let used = 0;
+  if (person.usl) used += Object.values(person.usl).reduce((a,b) => a + (parseInt(b)||0), 0);
+  // legacy: each excused_unpaid day was an 8-hour (480 min) unpaid sick request
+  if (person.dates) Object.values(person.dates).forEach(v => {
+    if ((v||'').toString().trim().toLowerCase() === 'excused_unpaid') used += 480;
+  });
+  return used;
 }
 function getUslRemaining(person) {
   const base = parseInt(person.uslBase) || 0;
   return base - getUslUsed(person);
 }
 function fmtMins(m) {
-  const neg = m < 0; m = Math.abs(m);
-  const h = Math.floor(m/60), r = m%60;
-  return (neg?'-':'') + (h ? h + 'h ' + r + 'm' : r + 'm');
+  const hrs = parseFloat((m / 60).toFixed(2));
+  return hrs + (Math.abs(hrs) === 1 ? ' hr' : ' hrs');
 }
 
 function isTerminated(dates) {
@@ -1302,10 +1306,15 @@ function openUslModal(pk) {
   document.getElementById('uslSubtitle').textContent = name + ' \u2014 used ' + fmtMins(used) + (p.uslBase !== undefined ? ' of ' + fmtMins(base) : '');
   document.getElementById('uslBaseInput').value = p.uslBase !== undefined && p.uslBase !== null ? p.uslBase : '';
   const hist = document.getElementById('uslHistory');
-  const entries = p.usl ? Object.entries(p.usl).sort((a,b)=>b[0].localeCompare(a[0])) : [];
+  const entries = [];
+  if (p.usl) Object.entries(p.usl).forEach(([d,m]) => entries.push([d, m + 'm']));
+  if (p.dates) Object.entries(p.dates).forEach(([d,v]) => {
+    if ((v||'').toString().trim().toLowerCase() === 'excused_unpaid') entries.push([d, '480m (legacy 8h day)']);
+  });
+  entries.sort((a,b) => b[0].localeCompare(a[0]));
   hist.innerHTML = entries.length
     ? '<div style="color:var(--text-muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Usage History</div>' +
-      entries.map(([d,m]) => `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${fmtDateLong(d)}</span><span style="color:var(--teal)">${m}m</span></div>`).join('')
+      entries.map(([d,m]) => `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${fmtDateLong(d)}</span><span style="color:var(--teal)">${m}</span></div>`).join('')
     : '<span style="color:var(--text-muted)">No USL usage logged yet. Enter minutes in the day\'s edit window.</span>';
   document.getElementById('uslModal').classList.add('active');
 }
@@ -1718,7 +1727,7 @@ function exportCSV() {
 function exportUSL() {
   if (!Object.keys(attendanceData).length) { toast('No data', 'error'); return; }
   const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
-  let csv = 'Store,First Name,Last Name,USL Balance (min),USL Used (min),USL Remaining (min),USL Remaining (h:mm)\n';
+  let csv = 'Store,First Name,Last Name,USL Balance (min),USL Used (min),USL Remaining (min),USL Remaining (hours)\n';
   Object.entries(attendanceData).filter(([,p])=>!p.management).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
     const name = p.displayName||k;
     let fn = '', ln = '';
@@ -1727,9 +1736,7 @@ function exportUSL() {
     const base = parseInt(p.uslBase)||0;
     const used = getUslUsed(p);
     const rem = base - used;
-    const h = Math.floor(Math.abs(rem)/60), m = Math.abs(rem)%60;
-    const hmm = (rem<0?'-':'') + h + ':' + String(m).padStart(2,'0');
-    csv += `"${storeName}","${fn}","${ln}",${base},${used},${rem},${hmm}\n`;
+    csv += `"${storeName}","${fn}","${ln}",${base},${used},${rem},${(rem/60).toFixed(2)}\n`;
   });
   downloadCSV(csv, `usl_balances_${storeKey(storeName)}_${new Date().toISOString().split('T')[0]}.csv`);
   toast('USL balances exported', 'success');
