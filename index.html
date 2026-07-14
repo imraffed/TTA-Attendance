@@ -387,7 +387,11 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
     <div class="cal-head"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
     <div class="cal-grid" id="calGrid"></div>
     <div style="font-size:0.65rem;color:var(--text-muted);margin-top:8px" id="calHint"></div>
-    <div class="modal-actions">
+    <div class="modal-actions" style="justify-content:space-between">
+      <div style="display:flex;gap:8px" id="profileActions">
+        <button class="btn" id="pHideBtn" onclick="profileToggleHide()" style="font-size:0.72rem">Hide</button>
+        <button class="btn" id="pMgmtBtn" onclick="profileToggleMgmt()" style="font-size:0.72rem;color:#a78bfa;border-color:rgba(167,139,250,0.3)">Mark as Management</button>
+      </div>
       <button class="btn" onclick="closeProfile()">Close</button>
     </div>
   </div>
@@ -1422,11 +1426,43 @@ function renderProfile() {
   }
   document.getElementById('calGrid').innerHTML = cells;
   document.getElementById('calHint').textContent = editable ? 'Click any day to add or edit an entry.' : '';
+  document.getElementById('pHideBtn').textContent = p.hidden ? 'Unhide' : 'Hide';
+  document.getElementById('pMgmtBtn').textContent = p.management ? 'Unmark Management' : 'Mark as Management';
+  document.getElementById('profileActions').style.display = canEdit(currentStoreId) ? '' : 'none';
 }
 
 function profileShiftMonth(dir) {
   profileMonth = new Date(profileMonth.getFullYear(), profileMonth.getMonth() + dir, 1);
   renderProfile();
+}
+
+function profileToggleHide() {
+  const p = attendanceData[profilePerson];
+  if (!p) return;
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const name = p.displayName || profilePerson;
+  if (p.hidden) { p.hidden = false; toast(name + ' is now visible', 'success'); }
+  else {
+    if (!confirm('Hide ' + name + ' from the tracker?')) return;
+    p.hidden = true; toast(name + ' hidden', 'success');
+  }
+  saveStoreData(); renderTable(); renderProfile();
+}
+
+function profileToggleMgmt() {
+  const p = attendanceData[profilePerson];
+  if (!p) return;
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const name = p.displayName || profilePerson;
+  if (p.management) {
+    p.management = false;
+    toast(name + ' unmarked as management', 'success');
+  } else {
+    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) return;
+    p.management = true;
+    toast(name + ' marked as management', 'success');
+  }
+  saveStoreData(); renderTable(); renderProfile();
 }
 
 function calDayClick(ds) {
