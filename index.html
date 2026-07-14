@@ -1016,10 +1016,10 @@ function rebuildDates() {
 
 function getPoints(val) {
   if (!val) return 0;
-  const v = val.toString().trim();
-  if (v === '1' || v === '1.0') return 1;
-  if (v === '0.5') return 0.5;
-  return 0; // USL, Excused, write-ups = 0 points
+  const v = val.toString().trim().toLowerCase();
+  if (v === '1' || v === '1.0' || v === 'late 1.0' || v === 'nc/ns' || v === 'ncns') return 1;
+  if (v === '0.5' || v === 'late 0.5' || v === 'early out') return 0.5;
+  return 0; // excused, excused_paid, excused_unpaid, USL, write-ups = 0 points
 }
 
 function getWriteupPts(dates) {
@@ -1105,8 +1105,13 @@ function cellHtml(val, uslMins) {
   let inner = '';
   if (val) {
     const v = val.toString().trim();
-    if (v === '0.5') inner = `<span class="val-point">0.5</span>`;
-    else if (v === '1' || v === '1.0') inner = `<span class="val-one">1</span>`;
+    const lv = v.toLowerCase();
+    if (v === '0.5' || lv === 'late 0.5') inner = `<span class="val-point">0.5</span>`;
+    else if (v === '1' || v === '1.0' || lv === 'late 1.0') inner = `<span class="val-one">1</span>`;
+    else if (lv === 'nc/ns' || lv === 'ncns') inner = `<span class="val-one">NC/NS</span>`;
+    else if (lv === 'early out') inner = `<span class="val-point">EO 0.5</span>`;
+    else if (lv === 'excused_paid') inner = `<span class="val-excused">Exc&middot;Paid</span>`;
+    else if (lv === 'excused_unpaid') inner = `<span class="val-usl">Unpaid Sick</span>`;
     else if (/^excused$/i.test(v)) inner = `<span class="val-excused">Excused</span>`;
     else if (/^usl$/i.test(v)) inner = `<span class="val-usl">USL</span>`;
     else if (v === '1st') inner = `<span class="val-1st">1st</span>`;
@@ -1336,8 +1341,8 @@ function countLast60(p) {
     const dt = new Date(d + 'T00:00:00');
     if (isNaN(dt) || dt.getTime() < cutoff) return;
     const val = (v||'').toString().trim().toLowerCase();
-    if (val === '0.5') lates++;
-    else if (val === '1' || val === '1.0' || val === 'nc/ns') callouts++;
+    if (val === '0.5' || val === 'late 0.5' || val === 'late 1.0' || val === 'early out') lates++;
+    else if (val === '1' || val === '1.0' || val === 'nc/ns' || val === 'ncns') callouts++;
   });
   return { lates, callouts };
 }
