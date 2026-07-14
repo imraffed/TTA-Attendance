@@ -361,9 +361,9 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
     <h3 style="color:var(--teal)">Unpaid Sick Leave Balance</h3>
     <p class="subtitle" id="uslSubtitle"></p>
     <div class="fld-row">
-      <label class="fld">Total USL Balance (minutes)</label>
-      <input type="number" id="uslBaseInput" placeholder="e.g. 3360" min="0" step="1">
-      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">This is the total balance allotted. Used minutes are subtracted automatically from logged USL entries.</div>
+      <label class="fld">Balance Override (minutes) &mdash; optional</label>
+      <input type="number" id="uslBaseInput" placeholder="Default: 1920 (32 hrs/year)" min="0" step="1">
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">Everyone gets 32 hrs (1920 min) per calendar year automatically, resetting Jan 1. Only enter a number here to override the default for this person. Leave blank to use the default.</div>
     </div>
     <div id="uslHistory" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;max-height:180px;overflow-y:auto;font-size:0.75rem"></div>
     <div class="modal-actions">
@@ -1046,18 +1046,25 @@ function getAnnualPts(dates) {
   return pts;
 }
 
+const DEFAULT_USL_BASE = 1920; // 32 hours in minutes, per calendar year
+
 function getUslUsed(person) {
+  const yr = new Date().getFullYear() + '-';
   let used = 0;
-  if (person.usl) used += Object.values(person.usl).reduce((a,b) => a + (parseInt(b)||0), 0);
+  if (person.usl) Object.entries(person.usl).forEach(([d,m]) => {
+    if (d.startsWith(yr)) used += (parseInt(m)||0);
+  });
   // legacy: each excused_unpaid day was an 8-hour (480 min) unpaid sick request
-  if (person.dates) Object.values(person.dates).forEach(v => {
-    if ((v||'').toString().trim().toLowerCase() === 'excused_unpaid') used += 480;
+  if (person.dates) Object.entries(person.dates).forEach(([d,v]) => {
+    if (d.startsWith(yr) && (v||'').toString().trim().toLowerCase() === 'excused_unpaid') used += 480;
   });
   return used;
 }
+function getUslBase(person) {
+  return (person.uslBase !== undefined && person.uslBase !== null && person.uslBase !== '') ? (parseInt(person.uslBase)||0) : DEFAULT_USL_BASE;
+}
 function getUslRemaining(person) {
-  const base = parseInt(person.uslBase) || 0;
-  return base - getUslUsed(person);
+  return getUslBase(person) - getUslUsed(person);
 }
 function fmtMins(m) {
   const hrs = parseFloat((m / 60).toFixed(2));
@@ -1179,10 +1186,9 @@ function renderTable() {
 
     const termed = isTerminated(dates);
     const nc = getNameColor(ap, termed, dates);
-    const hasBase = person.uslBase !== undefined && person.uslBase !== null && person.uslBase !== '';
     const remaining = getUslRemaining(person);
-    const uslClass = !hasBase ? 'usl-cell' : remaining <= 0 ? 'usl-cell usl-empty' : remaining < 120 ? 'usl-cell usl-low' : 'usl-cell';
-    const uslDisplay = hasBase ? fmtMins(remaining) : '<span style="color:var(--text-muted)">set</span>';
+    const uslClass = remaining <= 0 ? 'usl-cell usl-empty' : remaining < 480 ? 'usl-cell usl-low' : 'usl-cell';
+    const uslDisplay = fmtMins(remaining);
     const kesc = key.replace(/'/g,"\\'");
 
     return `<tr>
@@ -1224,9 +1230,8 @@ function openEdit(pk,dt) {
   const note = (p && p.notes && p.notes[dt]) ? p.notes[dt] : '';
   if (note) { noteEl.textContent = note; noteEl.style.display = 'block'; }
   else { noteEl.style.display = 'none'; }
-  const rem = p ? getUslRemaining(p) : 0;
-  const hasBase = p && p.uslBase !== undefined && p.uslBase !== null && p.uslBase !== '';
-  document.getElementById('uslBalancePreview').textContent = hasBase ? fmtMins(rem) : 'not set (click USL Left column to set)';
+  const rem = p ? getUslRemaining(p) : DEFAULT_USL_BASE;
+  document.getElementById('uslBalancePreview').textContent = fmtMins(rem);
   document.getElementById('hidePersonBtn').textContent = (p && p.hidden) ? 'Unhide Budtender' : 'Hide Budtender';
   document.getElementById('mgmtBtn').textContent = (p && p.management) ? 'Unmark Management' : 'Mark as Management';
   document.getElementById('editModal').classList.add('active');
@@ -1302,8 +1307,8 @@ function openUslModal(pk) {
   if (!p) return;
   const name = p.displayName || pk;
   const used = getUslUsed(p);
-  const base = parseInt(p.uslBase) || 0;
-  document.getElementById('uslSubtitle').textContent = name + ' \u2014 used ' + fmtMins(used) + (p.uslBase !== undefined ? ' of ' + fmtMins(base) : '');
+  const base = getUslBase(p);
+  document.getElementById('uslSubtitle').textContent = name + ' \u2014 used ' + fmtMins(used) + ' of ' + fmtMins(base) + ' this year';
   document.getElementById('uslBaseInput').value = p.uslBase !== undefined && p.uslBase !== null ? p.uslBase : '';
   const hist = document.getElementById('uslHistory');
   const entries = [];
@@ -1385,7 +1390,6 @@ function renderProfile() {
   const ap = getAnnualPts(dates);
   const wp = getWriteupPts(dates);
   const wu = getLatestWriteupInfo(dates);
-  const hasBase = p.uslBase !== undefined && p.uslBase !== null && p.uslBase !== '';
   const rem = getUslRemaining(p);
   const c60 = countLast60(p);
 
@@ -1399,7 +1403,7 @@ function renderProfile() {
   document.getElementById('profileStats').innerHTML = `
     <div class="pstat"><div class="v ${ptsColor(ap)}">${ap % 1 === 0 ? ap : ap.toFixed(1)}</div><div class="l">Annual Pts</div></div>
     <div class="pstat"><div class="v ${ptsColor(wp)}">${wp % 1 === 0 ? wp : wp.toFixed(1)}</div><div class="l">Write-Up Pts</div></div>
-    <div class="pstat"><div class="v" style="color:var(--teal)">${hasBase ? fmtMins(rem) : '\u2014'}</div><div class="l">USL Remaining</div></div>
+    <div class="pstat"><div class="v" style="color:var(--teal)">${fmtMins(rem)}</div><div class="l">USL Remaining</div></div>
     <div class="pstat"><div class="v" style="color:${wu.val ? (wu.val==='final'||wu.val==='terminated'||wu.val==='term'?'#ff6b7a':wu.val==='2nd'?'#a78bfa':'#6c8cff') : 'var(--text-muted)'}">${wu.val ? wuLabelMap[wu.val] : 'None'}</div><div class="l">Write-Up Status</div></div>
     <div class="pstat"><div class="v">${daysSince}</div><div class="l">Since Last Write-Up</div></div>
     <div class="pstat"><div class="v"><span class="val-point">${c60.lates}</span> / <span class="val-one">${c60.callouts}</span></div><div class="l">Lates / Callouts (60d)</div></div>
@@ -1713,7 +1717,7 @@ function exportCSV() {
     else { const pts = name.split(' ').filter(Boolean); fn = pts[0]||''; ln = pts.slice(1).join(' '); }
     const dates = p.dates||{};
     const ap = getAnnualPts(dates), wp = getWriteupPts(dates);
-    const base = parseInt(p.uslBase)||0, used = getUslUsed(p);
+    const base = getUslBase(p), used = getUslUsed(p);
     csv += `"${fn}","${ln}",${ap},${wp},${base},${used},${base-used},${allDates.map(d=>{
       let cell = dates[d]||'';
       if (p.usl && p.usl[d]) cell += (cell?' ':'') + '[USL ' + p.usl[d] + 'm]';
@@ -1733,7 +1737,7 @@ function exportUSL() {
     let fn = '', ln = '';
     if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
     else { const pts = name.split(' ').filter(Boolean); fn = pts[0]||''; ln = pts.slice(1).join(' '); }
-    const base = parseInt(p.uslBase)||0;
+    const base = getUslBase(p);
     const used = getUslUsed(p);
     const rem = base - used;
     csv += `"${storeName}","${fn}","${ln}",${base},${used},${rem},${(rem/60).toFixed(2)}\n`;
