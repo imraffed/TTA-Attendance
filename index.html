@@ -109,8 +109,8 @@ thead th:nth-child(5){left:350px;min-width:85px;text-align:center;border-right:1
 tbody td{padding:8px 12px;border-bottom:1px solid rgba(46,49,70,0.35);border-right:1px solid rgba(46,49,70,0.35);white-space:nowrap}
 tbody td:last-child{border-right:none}
 tbody td:nth-child(1),tbody td:nth-child(2),tbody td:nth-child(3),tbody td:nth-child(4),tbody td:nth-child(5){position:sticky;z-index:10;background:var(--bg)}
-tbody td:nth-child(1){left:0;min-width:90px}
-tbody td:nth-child(2){left:90px;min-width:100px}
+tbody td:nth-child(1){left:0;min-width:90px;cursor:pointer}
+tbody td:nth-child(2){left:90px;min-width:100px;cursor:pointer}
 tbody td:nth-child(3){left:190px;min-width:75px;text-align:center;font-weight:600}
 tbody td:nth-child(4){left:265px;min-width:85px;text-align:center;font-weight:600}
 tbody td:nth-child(5){left:350px;min-width:85px;text-align:center;font-weight:600;border-right:1px solid rgba(108,140,255,0.25);cursor:pointer}
@@ -155,6 +155,24 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
 .usl-cell{color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:0.72rem}
 .usl-cell.usl-low{color:#f59e0b}
 .usl-cell.usl-empty{color:var(--red)}
+
+/* Profile modal */
+.profile-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.pstat{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.pstat .v{font-size:1.02rem;font-weight:700}
+.pstat .l{font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;line-height:1.3}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav .month-label{font-size:0.9rem;font-weight:700}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
+.cal-head div{text-align:center;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:2px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-day{min-height:46px;border:1px solid var(--border);border-radius:6px;padding:4px 5px;font-size:0.68rem;background:var(--bg);transition:background 0.1s}
+.cal-day.other{opacity:0.22}
+.cal-day.clickable{cursor:pointer}
+.cal-day.clickable:hover{background:var(--surface2);border-color:var(--border-light)}
+.cal-day .dnum{color:var(--text-muted);font-size:0.6rem}
+.cal-day .dval{margin-top:2px;font-weight:700;text-align:center}
+.cal-day .dusl{font-size:0.55rem;color:var(--teal);text-align:center}
 
 /* Modals */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
@@ -255,8 +273,8 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
     <div class="key-row">
       <div class="key-item"><div class="key-swatch" style="background:#ff6b7a"></div> 1 = NC/NS or Late 1pt</div>
       <div class="key-item"><div class="key-swatch" style="background:#f59e0b"></div> 0.5 = Late</div>
-      <div class="key-item"><div class="key-swatch" style="background:#6c8cff"></div> Excused</div>
-      <div class="key-item"><div class="key-swatch" style="background:#2dd4bf"></div> USL (Unpaid Sick Leave)</div>
+      <div class="key-item"><div class="key-swatch" style="background:#6c8cff"></div> Excused (train delays etc. &mdash; 0 pts)</div>
+      <div class="key-item"><div class="key-swatch" style="background:#2dd4bf"></div> USL (Unpaid Sick Leave &mdash; 0 pts, minutes tracked)</div>
       <div class="key-sep"></div>
       <div class="key-item"><div class="key-swatch" style="background:#6c8cff"></div> 1st</div>
       <div class="key-item"><div class="key-swatch" style="background:#a78bfa"></div> 2nd</div>
@@ -326,6 +344,7 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
     <div class="modal-actions" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
         <button class="btn" onclick="toggleHidePerson()" id="hidePersonBtn" style="font-size:0.72rem">Hide Budtender</button>
+        <button class="btn" onclick="toggleManagement()" id="mgmtBtn" style="font-size:0.72rem;color:#a78bfa;border-color:rgba(167,139,250,0.3)">Mark as Management</button>
         <button class="btn danger" onclick="deletePerson()" style="font-size:0.72rem">Delete</button>
       </div>
       <div style="display:flex;gap:8px">
@@ -350,6 +369,26 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
     <div class="modal-actions">
       <button class="btn" onclick="closeUslModal()">Cancel</button>
       <button class="btn primary" onclick="saveUslBase()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal" style="width:520px">
+    <h3 id="profileName" style="font-style:italic">Profile</h3>
+    <p class="subtitle" id="profileSub"></p>
+    <div class="profile-stats" id="profileStats"></div>
+    <div class="cal-nav">
+      <button class="btn" onclick="profileShiftMonth(-1)">&larr; Prev</button>
+      <div class="month-label" id="calMonthLabel"></div>
+      <button class="btn" onclick="profileShiftMonth(1)">Next &rarr;</button>
+    </div>
+    <div class="cal-head"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:8px" id="calHint"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeProfile()">Close</button>
     </div>
   </div>
 </div>
@@ -871,6 +910,7 @@ function parseIncidentLog(rows, nameCol, dateCol, typeCol) {
     if (typeof rawDate === 'number') { const d = XLSX.SSF.parse_date_code(rawDate); ds = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }
     else { const d = new Date(rawDate); ds = !isNaN(d) ? d.toISOString().split('T')[0] : rawDate.toString(); }
     const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    if (attendanceData[sk] && attendanceData[sk].management) return; // management excluded from data
     if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {}, notes: {} };
     const val = mapType(type, row);
     if (val) {
@@ -930,6 +970,7 @@ function parseGrid(rows, fnCol, lnCol, cols) {
     if (!fn&&!ln) return;
     const name = ln ? `${ln}, ${fn}` : fn;
     const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    if (attendanceData[sk] && attendanceData[sk].management) return; // management excluded from data
     if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {} };
     dc.forEach(d => { const v=(row[d]||'').toString().trim(); if (v) parsed[sk].dates[d]=v; });
   });
@@ -953,6 +994,7 @@ function showPreview(parsed) {
 function confirmImport() {
   if (!pendingImport) return;
   Object.entries(pendingImport).forEach(([k,v]) => {
+    if (attendanceData[k] && attendanceData[k].management) return; // management excluded
     if (!attendanceData[k]) attendanceData[k] = { displayName: v.displayName, dates: {}, notes: {} };
     if (!attendanceData[k].dates) attendanceData[k].dates = {};
     if (!attendanceData[k].notes) attendanceData[k].notes = {};
@@ -1119,7 +1161,8 @@ function renderTable() {
     const usl = person.usl || {};
     const ap = getAnnualPts(dates);
     const wp = getWriteupPts(dates);
-    if (!showHidden && person.hidden) return '';
+    if (!showHidden && (person.hidden || person.management)) return '';
+    const mgmtTag = person.management ? ' <span style="font-size:0.58rem;padding:1px 6px;border-radius:4px;background:rgba(167,139,250,0.12);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);font-weight:600;letter-spacing:0.04em">MGMT</span>' : '';
 
     const termed = isTerminated(dates);
     const nc = getNameColor(ap, termed, dates);
@@ -1130,8 +1173,8 @@ function renderTable() {
     const kesc = key.replace(/'/g,"\\'");
 
     return `<tr>
-      <td><span class="name-badge ${nc}">${esc(fn)}</span></td>
-      <td><span class="name-badge ${nc}">${esc(ln)}</span></td>
+      <td onclick="openProfile('${kesc}')" title="Click for profile"><span class="name-badge ${nc}">${esc(fn)}</span>${mgmtTag}</td>
+      <td onclick="openProfile('${kesc}')" title="Click for profile"><span class="name-badge ${nc}">${esc(ln)}</span></td>
       <td class="${ptsColor(ap)}">${ap > 0 ? ap % 1 === 0 ? ap : ap.toFixed(1) : '0'}</td>
       <td class="${ptsColor(wp)}">${wp > 0 ? wp % 1 === 0 ? wp : wp.toFixed(1) : '0'}</td>
       <td class="${uslClass}" onclick="openUslModal('${kesc}')" title="Click to set USL balance / view history">${uslDisplay}</td>
@@ -1172,6 +1215,7 @@ function openEdit(pk,dt) {
   const hasBase = p && p.uslBase !== undefined && p.uslBase !== null && p.uslBase !== '';
   document.getElementById('uslBalancePreview').textContent = hasBase ? fmtMins(rem) : 'not set (click USL Left column to set)';
   document.getElementById('hidePersonBtn').textContent = (p && p.hidden) ? 'Unhide Budtender' : 'Hide Budtender';
+  document.getElementById('mgmtBtn').textContent = (p && p.management) ? 'Unmark Management' : 'Mark as Management';
   document.getElementById('editModal').classList.add('active');
   setTimeout(() => input.focus(), 100);
 }
@@ -1206,6 +1250,22 @@ function toggleHidePerson() {
   else {
     if (!confirm('Hide ' + name + ' from the tracker?')) return;
     p.hidden = true; toast(name + ' hidden', 'success');
+  }
+  saveStoreData(); renderTable(); closeEdit();
+}
+
+function toggleManagement() {
+  if (!editingPerson) return;
+  const p = attendanceData[editingPerson];
+  if (!p) return;
+  const name = p.displayName || editingPerson;
+  if (p.management) {
+    p.management = false;
+    toast(name + ' unmarked as management \u2014 they will appear in data and imports again', 'success');
+  } else {
+    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) return;
+    p.management = true;
+    toast(name + ' marked as management', 'success');
   }
   saveStoreData(); renderTable(); closeEdit();
 }
@@ -1251,6 +1311,123 @@ function saveUslBase() {
   else p.uslBase = parseInt(v) || 0;
   saveStoreData(); renderTable(); closeUslModal();
   toast('USL balance updated', 'success');
+}
+
+// ═══════════════════════════════════════
+// EMPLOYEE PROFILE
+// ═══════════════════════════════════════
+let profilePerson = null;
+let profileMonth = new Date();
+
+function getLatestWriteupInfo(dates) {
+  const wt = ['1st','2nd','final','terminated','term','completed'];
+  let latestD = null, latestV = null;
+  Object.entries(dates||{}).sort((a,b) => a[0].localeCompare(b[0])).forEach(([d, v]) => {
+    const val = (v||'').toString().trim().toLowerCase();
+    if (wt.includes(val)) { latestD = d; latestV = val; }
+  });
+  return { date: latestD, val: latestV };
+}
+
+function countLast60(p) {
+  const cutoff = Date.now() - 60*86400000;
+  let lates = 0, callouts = 0;
+  Object.entries(p.dates||{}).forEach(([d,v]) => {
+    const dt = new Date(d + 'T00:00:00');
+    if (isNaN(dt) || dt.getTime() < cutoff) return;
+    const val = (v||'').toString().trim().toLowerCase();
+    if (val === '0.5') lates++;
+    else if (val === '1' || val === '1.0' || val === 'nc/ns') callouts++;
+  });
+  return { lates, callouts };
+}
+
+function openProfile(pk) {
+  profilePerson = pk;
+  profileMonth = new Date();
+  renderProfile();
+  document.getElementById('profileModal').classList.add('active');
+}
+function closeProfile() { document.getElementById('profileModal').classList.remove('active'); profilePerson = null; }
+
+function renderProfile() {
+  const p = attendanceData[profilePerson];
+  if (!p) return;
+  const dates = p.dates || {};
+  const name = p.displayName || profilePerson;
+  document.getElementById('profileName').textContent = name;
+
+  const termed = isTerminated(dates);
+  const sub = [];
+  if (termed) sub.push('TERMINATED');
+  if (p.management) sub.push('Management');
+  if (p.hidden) sub.push('Hidden');
+  document.getElementById('profileSub').textContent = sub.join(' \u2022 ') || 'Active budtender';
+
+  const ap = getAnnualPts(dates);
+  const wp = getWriteupPts(dates);
+  const wu = getLatestWriteupInfo(dates);
+  const hasBase = p.uslBase !== undefined && p.uslBase !== null && p.uslBase !== '';
+  const rem = getUslRemaining(p);
+  const c60 = countLast60(p);
+
+  const wuLabelMap = { '1st':'1st Written', '2nd':'2nd Written', 'final':'Final', 'terminated':'Terminated', 'term':'Terminated', 'completed':'Completed' };
+  let daysSince = '\u2014';
+  if (wu.date) {
+    const diff = Math.floor((Date.now() - new Date(wu.date + 'T00:00:00').getTime()) / 86400000);
+    daysSince = diff + 'd';
+  }
+
+  document.getElementById('profileStats').innerHTML = `
+    <div class="pstat"><div class="v ${ptsColor(ap)}">${ap % 1 === 0 ? ap : ap.toFixed(1)}</div><div class="l">Annual Pts</div></div>
+    <div class="pstat"><div class="v ${ptsColor(wp)}">${wp % 1 === 0 ? wp : wp.toFixed(1)}</div><div class="l">Write-Up Pts</div></div>
+    <div class="pstat"><div class="v" style="color:var(--teal)">${hasBase ? fmtMins(rem) : '\u2014'}</div><div class="l">USL Remaining</div></div>
+    <div class="pstat"><div class="v" style="color:${wu.val ? (wu.val==='final'||wu.val==='terminated'||wu.val==='term'?'#ff6b7a':wu.val==='2nd'?'#a78bfa':'#6c8cff') : 'var(--text-muted)'}">${wu.val ? wuLabelMap[wu.val] : 'None'}</div><div class="l">Write-Up Status</div></div>
+    <div class="pstat"><div class="v">${daysSince}</div><div class="l">Since Last Write-Up</div></div>
+    <div class="pstat"><div class="v"><span class="val-point">${c60.lates}</span> / <span class="val-one">${c60.callouts}</span></div><div class="l">Lates / Callouts (60d)</div></div>
+  `;
+
+  // calendar
+  const y = profileMonth.getFullYear(), m = profileMonth.getMonth();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = monthNames[m] + ' ' + y;
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const daysPrev = new Date(y, m, 0).getDate();
+  const editable = canEdit(currentStoreId) && !p.management;
+  const usl = p.usl || {};
+
+  let cells = '';
+  const total = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+  for (let i = 0; i < total; i++) {
+    const dayNum = i - firstDow + 1;
+    let cy = y, cm = m, cd = dayNum, other = false;
+    if (dayNum < 1) { other = true; cd = daysPrev + dayNum; cm = m - 1; if (cm < 0) { cm = 11; cy--; } }
+    else if (dayNum > daysInMonth) { other = true; cd = dayNum - daysInMonth; cm = m + 1; if (cm > 11) { cm = 0; cy++; } }
+    const ds = cy + '-' + String(cm+1).padStart(2,'0') + '-' + String(cd).padStart(2,'0');
+    const v = dates[ds] || '';
+    const um = usl[ds] || 0;
+    const click = (editable && !other) ? `onclick="calDayClick('${ds}')"` : '';
+    cells += `<div class="cal-day ${other?'other':''} ${editable&&!other?'clickable':''}" ${click}>
+      <div class="dnum">${cd}</div>
+      ${v ? `<div class="dval">${cellHtml(v, 0)}</div>` : ''}
+      ${um ? `<div class="dusl">${um}m USL</div>` : ''}
+    </div>`;
+  }
+  document.getElementById('calGrid').innerHTML = cells;
+  document.getElementById('calHint').textContent = editable ? 'Click any day to add or edit an entry.' : '';
+}
+
+function profileShiftMonth(dir) {
+  profileMonth = new Date(profileMonth.getFullYear(), profileMonth.getMonth() + dir, 1);
+  renderProfile();
+}
+
+function calDayClick(ds) {
+  const pk = profilePerson;
+  closeProfile();
+  openEdit(pk, ds);
 }
 
 // ═══════════════════════════════════════
@@ -1479,7 +1656,7 @@ function exportCSV() {
   rebuildDates();
   const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
   let csv = 'First Name,Last Name,Annual Pts,Write-Up Pts,USL Base (min),USL Used (min),USL Remaining (min),' + allDates.map(d=>fmtDate(d)).join(',') + '\n';
-  Object.entries(attendanceData).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
+  Object.entries(attendanceData).filter(([,p])=>!p.management).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
     const name = p.displayName||k;
     let fn = '', ln = '';
     if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
@@ -1501,7 +1678,7 @@ function exportUSL() {
   if (!Object.keys(attendanceData).length) { toast('No data', 'error'); return; }
   const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
   let csv = 'Store,First Name,Last Name,USL Balance (min),USL Used (min),USL Remaining (min),USL Remaining (h:mm)\n';
-  Object.entries(attendanceData).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
+  Object.entries(attendanceData).filter(([,p])=>!p.management).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
     const name = p.displayName||k;
     let fn = '', ln = '';
     if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
