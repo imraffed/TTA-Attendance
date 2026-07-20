@@ -183,7 +183,7 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
 .modal-btns{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
 .modal-btns .btn{font-size:0.72rem;padding:5px 10px}
 .modal-section-label{font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
-.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
 .modal input[type=text],.modal input[type=email],.modal input[type=password],.modal input[type=number],.modal select{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.85rem;outline:none}
 .modal input:focus,.modal select:focus{border-color:var(--accent)}
 .modal label.fld{display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px}
@@ -288,6 +288,7 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
   <div class="toolbar">
     <input class="search-box" id="searchBox" type="text" placeholder="Search budtenders..." oninput="renderTable()">
     <div class="toolbar-right">
+      <button class="btn" id="undoBtn" onclick="undoLast()" disabled>&#8630; Undo</button>
       <button class="btn" id="hideBtn" onclick="toggleShowHidden()">Show Hidden</button>
       <button class="btn" id="importBtn" onclick="openImport()">&#8593; Import</button>
       <button class="btn" onclick="exportCSV()">&#8595; Export</button>
@@ -341,16 +342,14 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
       <input type="number" id="uslMinsInput" placeholder="e.g. 45 (leave blank if none)" min="0" step="1">
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">If lateness was due to a doctor's visit or illness, enter the minutes of Unpaid Sick Leave applied. Balance remaining: <span id="uslBalancePreview" style="color:var(--teal);font-weight:600">&mdash;</span></div>
     </div>
-    <div class="modal-actions" style="justify-content:space-between">
-      <div style="display:flex;gap:8px">
-        <button class="btn" onclick="toggleHidePerson()" id="hidePersonBtn" style="font-size:0.72rem">Hide Budtender</button>
-        <button class="btn" onclick="toggleManagement()" id="mgmtBtn" style="font-size:0.72rem;color:#a78bfa;border-color:rgba(167,139,250,0.3)">Mark as Management</button>
-        <button class="btn danger" onclick="deletePerson()" style="font-size:0.72rem">Delete</button>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn" onclick="closeEdit()">Cancel</button>
-        <button class="btn primary" onclick="saveEdit()">Save</button>
-      </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <button class="btn" onclick="toggleHidePerson()" id="hidePersonBtn" style="font-size:0.72rem">Hide</button>
+      <button class="btn" onclick="toggleManagement()" id="mgmtBtn" style="font-size:0.72rem;color:#a78bfa;border-color:rgba(167,139,250,0.3)">Mark as Mgmt</button>
+      <button class="btn danger" onclick="deletePerson()" style="font-size:0.72rem">Delete</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn" onclick="closeEdit()">Cancel</button>
+      <button class="btn primary" onclick="saveEdit()" style="padding:8px 22px">Save</button>
     </div>
   </div>
 </div>
@@ -439,6 +438,7 @@ tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2),tbody tr:hover td:
         <button class="btn teal" id="migrateBtn" onclick="migrateV1()">Migrate V1 Data</button>
       </div>
       <div id="migrateStatus" style="font-size:0.72rem;color:var(--teal);margin-top:8px;display:none"></div>
+      <button class="btn" onclick="mergeDuplicates()" style="width:100%;margin-top:10px">Merge Duplicate Names (current store)</button>
     </div>
 
     <div class="modal-actions">
@@ -854,6 +854,37 @@ function saveStoreData() {
     .catch(err => toast('Save failed: ' + err.message, 'error'));
 }
 
+// ─── UNDO ───
+let undoStack = [];
+function pushUndo(label) {
+  if (!currentStoreId) return;
+  try {
+    undoStack.push({ storeId: currentStoreId, label: label, data: JSON.parse(JSON.stringify(attendanceData)) });
+    if (undoStack.length > 20) undoStack.shift();
+    updateUndoBtn();
+  } catch(e) { console.warn('undo snapshot failed', e); }
+}
+function updateUndoBtn() {
+  const btn = document.getElementById('undoBtn');
+  btn.disabled = !undoStack.length;
+  btn.title = undoStack.length ? 'Undo: ' + undoStack[undoStack.length-1].label : 'Nothing to undo';
+}
+function undoLast() {
+  if (!undoStack.length) return;
+  const snap = undoStack[undoStack.length-1];
+  if (!canEdit(snap.storeId)) { toast('No edit access for that store', 'error'); return; }
+  const storeName = allStores[snap.storeId] ? allStores[snap.storeId].name : snap.storeId;
+  if (!confirm('Undo: ' + snap.label + (snap.storeId !== currentStoreId ? ' (in ' + storeName + ')' : '') + '?')) return;
+  undoStack.pop();
+  storesRef.child(snap.storeId).child('attendance').set(snap.data)
+    .then(() => {
+      if (snap.storeId === currentStoreId) { attendanceData = snap.data; rebuildDates(); renderTable(); }
+      toast('Undid: ' + snap.label, 'success');
+    })
+    .catch(err => toast('Undo failed: ' + err.message, 'error'));
+  updateUndoBtn();
+}
+
 // ═══════════════════════════════════════
 // IMPORT
 // ═══════════════════════════════════════
@@ -1032,9 +1063,20 @@ function parseIncidentLog(rows, nameCol, dateCol, typeCol) {
     let ds = '';
     if (typeof rawDate === 'number') { const d = XLSX.SSF.parse_date_code(rawDate); ds = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }
     else { const d = new Date(rawDate); ds = !isNaN(d) ? d.toISOString().split('T')[0] : rawDate.toString(); }
-    const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
-    if (attendanceData[sk] && attendanceData[sk].management) return; // management excluded from data
-    if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {}, notes: {} };
+    const sk0 = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    // match existing people regardless of "First Last" vs "Last, First" format
+    const ek = findExistingKey(name);
+    let sk, disp;
+    if (ek) {
+      if (attendanceData[ek].management) return; // management excluded from data
+      sk = ek; disp = attendanceData[ek].displayName || ek;
+    } else {
+      const parts = name.includes(',') ? null : name.trim().split(/\s+/);
+      disp = name.includes(',') ? name : (parts.length > 1 ? parts.slice(1).join(' ') + ', ' + parts[0] : name);
+      sk = disp.replace(/[^a-zA-Z0-9_, -]/g, '_');
+    }
+    if (attendanceData[sk] && attendanceData[sk].management) return;
+    if (!parsed[sk]) parsed[sk] = { displayName: disp, dates: {}, notes: {} };
     const val = mapType(type, row);
     if (val) {
       parsed[sk].dates[ds] = val;
@@ -1114,9 +1156,17 @@ function parseGrid(rows, fnCol, lnCol, cols) {
   rows.forEach(row => {
     const fn=(row[fnCol]||'').toString().trim(), ln=(row[lnCol]||'').toString().trim();
     if (!fn&&!ln) return;
-    const name = ln ? `${ln}, ${fn}` : fn;
-    const sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
-    if (attendanceData[sk] && attendanceData[sk].management) return; // management excluded from data
+    const rawName = ln ? `${ln}, ${fn}` : fn;
+    const ek = findExistingKey(rawName);
+    let sk, name;
+    if (ek) {
+      if (attendanceData[ek].management) return; // management excluded from data
+      sk = ek; name = attendanceData[ek].displayName || ek;
+    } else {
+      name = rawName;
+      sk = name.replace(/[^a-zA-Z0-9_, -]/g, '_');
+      if (attendanceData[sk] && attendanceData[sk].management) return;
+    }
     if (!parsed[sk]) parsed[sk] = { displayName: name, dates: {} };
     dc.forEach(d => {
       const v = mapGridValue((row[d]||'').toString());
@@ -1145,6 +1195,7 @@ function showPreview(parsed, extraHtml) {
 
 function confirmImport() {
   if (!pendingImport) return;
+  pushUndo('import (' + Object.keys(pendingImport).length + ' budtenders)');
   const writeups = ['1st','2nd','final','terminated','term','completed'];
   Object.entries(pendingImport).forEach(([k,v]) => {
     if (attendanceData[k] && attendanceData[k].management) return; // management excluded
@@ -1359,7 +1410,8 @@ function renderTable() {
       ${allDates.map(d => {
         const v = dates[d] || '';
         const um = usl[d] || 0;
-        return `<td class="date-cell ${editable?'':'no-edit'}" ${editable?`onclick="openEdit('${kesc}','${d}')"`:''}>${cellHtml(v, um)}</td>`;
+        const note = (person.notes && person.notes[d]) ? person.notes[d] : '';
+        return `<td class="date-cell ${editable?'':'no-edit'}" ${note?`title="${esc(note)}"`:''} ${editable?`onclick="openEdit('${kesc}','${d}')"`:''}>${cellHtml(v, um)}</td>`;
       }).join('')}
     </tr>`;
   }).join('');
@@ -1391,8 +1443,8 @@ function openEdit(pk,dt) {
   else { noteEl.style.display = 'none'; }
   const rem = p ? getUslRemaining(p) : DEFAULT_USL_BASE;
   document.getElementById('uslBalancePreview').textContent = fmtMins(rem);
-  document.getElementById('hidePersonBtn').textContent = (p && p.hidden) ? 'Unhide Budtender' : 'Hide Budtender';
-  document.getElementById('mgmtBtn').textContent = (p && p.management) ? 'Unmark Management' : 'Mark as Management';
+  document.getElementById('hidePersonBtn').textContent = (p && p.hidden) ? 'Unhide' : 'Hide';
+  document.getElementById('mgmtBtn').textContent = (p && p.management) ? 'Unmark Mgmt' : 'Mark as Mgmt';
   document.getElementById('editModal').classList.add('active');
   setTimeout(() => input.focus(), 100);
 }
@@ -1404,6 +1456,7 @@ function saveEdit() {
   if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
   const val = document.getElementById('editInput').value.trim();
   const uslMins = parseInt(document.getElementById('uslMinsInput').value) || 0;
+  pushUndo('entry edit (' + fmtDateLong(editingDate) + ')');
   if (!attendanceData[editingPerson]) attendanceData[editingPerson] = { displayName: editingPerson, dates: {} };
   const p = attendanceData[editingPerson];
   if (!p.dates) p.dates = {};
@@ -1423,9 +1476,10 @@ function toggleHidePerson() {
   const p = attendanceData[editingPerson];
   if (!p) return;
   const name = p.displayName || editingPerson;
+  pushUndo((p.hidden ? 'unhide ' : 'hide ') + name);
   if (p.hidden) { p.hidden = false; toast(name + ' is now visible', 'success'); }
   else {
-    if (!confirm('Hide ' + name + ' from the tracker?')) return;
+    if (!confirm('Hide ' + name + ' from the tracker?')) { undoStack.pop(); updateUndoBtn(); return; }
     p.hidden = true; toast(name + ' hidden', 'success');
   }
   saveStoreData(); renderTable(); closeEdit();
@@ -1436,11 +1490,12 @@ function toggleManagement() {
   const p = attendanceData[editingPerson];
   if (!p) return;
   const name = p.displayName || editingPerson;
+  pushUndo((p.management ? 'unmark mgmt ' : 'mark mgmt ') + name);
   if (p.management) {
     p.management = false;
     toast(name + ' unmarked as management \u2014 they will appear in data and imports again', 'success');
   } else {
-    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) return;
+    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) { undoStack.pop(); updateUndoBtn(); return; }
     p.management = true;
     toast(name + ' marked as management', 'success');
   }
@@ -1452,6 +1507,7 @@ function deletePerson() {
   const p = attendanceData[editingPerson];
   const name = p ? (p.displayName || editingPerson) : editingPerson;
   if (!confirm('Delete ' + name + ' and all their attendance data?')) return;
+  pushUndo('delete ' + name);
   delete attendanceData[editingPerson];
   saveStoreData(); rebuildDates(); renderTable(); closeEdit();
   toast(name + ' deleted', 'success');
@@ -1489,6 +1545,7 @@ function saveUslBase() {
   const p = attendanceData[uslEditingPerson];
   if (!p) return;
   const v = document.getElementById('uslBaseInput').value.trim();
+  pushUndo('USL balance change for ' + (p.displayName || uslEditingPerson));
   if (v === '') delete p.uslBase;
   else p.uslBase = parseInt(v) || 0;
   saveStoreData(); renderTable(); closeUslModal();
@@ -1589,8 +1646,9 @@ function renderProfile() {
     const ds = cy + '-' + String(cm+1).padStart(2,'0') + '-' + String(cd).padStart(2,'0');
     const v = dates[ds] || '';
     const um = usl[ds] || 0;
+    const dnote = (p.notes && p.notes[ds]) ? p.notes[ds] : '';
     const click = (editable && !other) ? `onclick="calDayClick('${ds}')"` : '';
-    cells += `<div class="cal-day ${other?'other':''} ${editable&&!other?'clickable':''}" ${click}>
+    cells += `<div class="cal-day ${other?'other':''} ${editable&&!other?'clickable':''}" ${dnote?`title="${esc(dnote)}"`:''} ${click}>
       <div class="dnum">${cd}</div>
       ${v ? `<div class="dval">${cellHtml(v, 0)}</div>` : ''}
       ${um ? `<div class="dusl">${um}m USL</div>` : ''}
@@ -1613,9 +1671,10 @@ function profileToggleHide() {
   if (!p) return;
   if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
   const name = p.displayName || profilePerson;
+  pushUndo((p.hidden ? 'unhide ' : 'hide ') + name);
   if (p.hidden) { p.hidden = false; toast(name + ' is now visible', 'success'); }
   else {
-    if (!confirm('Hide ' + name + ' from the tracker?')) return;
+    if (!confirm('Hide ' + name + ' from the tracker?')) { undoStack.pop(); updateUndoBtn(); return; }
     p.hidden = true; toast(name + ' hidden', 'success');
   }
   saveStoreData(); renderTable(); renderProfile();
@@ -1626,11 +1685,12 @@ function profileToggleMgmt() {
   if (!p) return;
   if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
   const name = p.displayName || profilePerson;
+  pushUndo((p.management ? 'unmark mgmt ' : 'mark mgmt ') + name);
   if (p.management) {
     p.management = false;
     toast(name + ' unmarked as management', 'success');
   } else {
-    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) return;
+    if (!confirm('Mark ' + name + ' as management? They will be hidden from the tracker, skipped on all future imports, and excluded from exports.')) { undoStack.pop(); updateUndoBtn(); return; }
     p.management = true;
     toast(name + ' marked as management', 'success');
   }
@@ -1710,6 +1770,39 @@ function removeStore(id) {
 }
 
 // ─── V1 MIGRATION ───
+function mergeDuplicates() {
+  if (!currentStoreId) { toast('No store selected', 'error'); return; }
+  if (!canEdit(currentStoreId)) { toast('View-only access', 'error'); return; }
+  const groups = {};
+  Object.keys(attendanceData).forEach(k => {
+    const n = normFL(attendanceData[k].displayName || k);
+    (groups[n] = groups[n] || []).push(k);
+  });
+  const dupGroups = Object.values(groups).filter(g => g.length > 1);
+  if (!dupGroups.length) { toast('No duplicate names found in this store', 'success'); return; }
+  if (!confirm('Found ' + dupGroups.length + ' duplicated name(s). Merge each into a single row? (All dates, notes, and USL from both rows are kept.)')) return;
+  pushUndo('merge duplicates');
+  let merged = 0;
+  dupGroups.forEach(g => {
+    // prefer the "Last, First" formatted record as the surviving row
+    const target = g.find(k => (attendanceData[k].displayName || k).includes(',')) || g[0];
+    g.forEach(k => {
+      if (k === target) return;
+      const t = attendanceData[target], s = attendanceData[k];
+      t.dates = Object.assign({}, s.dates || {}, t.dates || {});
+      t.notes = Object.assign({}, s.notes || {}, t.notes || {});
+      if (s.usl || t.usl) t.usl = Object.assign({}, s.usl || {}, t.usl || {});
+      if (s.hidden) t.hidden = true;
+      if (s.management) t.management = true;
+      if (t.uslBase === undefined && s.uslBase !== undefined) t.uslBase = s.uslBase;
+      delete attendanceData[k];
+      merged++;
+    });
+  });
+  saveStoreData(); rebuildDates(); renderTable();
+  toast('Merged ' + merged + ' duplicate row(s)', 'success');
+}
+
 async function migrateV1() {
   const nameInput = document.getElementById('migrateStoreName').value.trim();
   if (!nameInput) { toast('Enter a store name to migrate into', 'error'); return; }
@@ -1917,6 +2010,7 @@ function confirmClear() {
   const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'this store';
   if (!confirm('Clear ALL attendance data for ' + storeName + '? Cannot be undone.')) return;
   if (!confirm('Are you sure?')) return;
+  pushUndo('clear all data');
   attendanceData = {};
   saveStoreData(); rebuildDates(); renderTable();
   toast('Data cleared for ' + storeName, 'success');
