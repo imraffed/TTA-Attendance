@@ -1306,9 +1306,23 @@ function getLatestWriteup(dates) {
   return latest;
 }
 
+// current standing after decay: one level drops every 60 days since the last write-up
+function getEffectiveWriteup(dates) {
+  const wu = getLatestWriteupInfo(dates);
+  if (!wu.val || !wu.date) return null;
+  if (wu.val === 'terminated' || wu.val === 'term') return 'terminated';
+  if (wu.val === 'completed') return null;
+  const levels = { '1st': 1, '2nd': 2, 'final': 3 };
+  let lvl = levels[wu.val] || 0;
+  const days = Math.floor((Date.now() - new Date(wu.date + 'T00:00:00').getTime()) / 86400000);
+  lvl -= Math.floor(days / 60);
+  if (lvl <= 0) return null;
+  return { 1: '1st', 2: '2nd', 3: 'final' }[lvl];
+}
+
 function getNameColor(annualPts, terminated, dates) {
   if (terminated) return 'name-terminated';
-  const wu = dates ? getLatestWriteup(dates) : null;
+  const wu = dates ? getEffectiveWriteup(dates) : null;
   if (wu === 'final') return 'name-red';
   if (wu === '2nd') return 'name-purple';
   if (wu === '1st') return 'name-blue';
@@ -1621,6 +1635,8 @@ function renderProfile() {
   const c60 = countLast60(p);
 
   const wuLabelMap = { '1st':'1st Written', '2nd':'2nd Written', 'final':'Final', 'terminated':'Terminated', 'term':'Terminated', 'completed':'Completed' };
+  const eff = getEffectiveWriteup(dates);
+  const decayed = wu.val && eff !== (wu.val === 'term' ? 'terminated' : wu.val) && wu.val !== 'completed';
   let daysSince = '\u2014';
   if (wu.date) {
     const diff = Math.floor((Date.now() - new Date(wu.date + 'T00:00:00').getTime()) / 86400000);
@@ -1632,7 +1648,7 @@ function renderProfile() {
     <div class="pstat"><div class="v ${ptsColor(wp)}">${wp % 1 === 0 ? wp : wp.toFixed(1)}</div><div class="l">Pts Since Write-Up</div></div>
     <div class="pstat"><div class="v ${ptsColor(ap)}">${ap % 1 === 0 ? ap : ap.toFixed(1)}</div><div class="l">Annual Pts</div></div>
     <div class="pstat"><div class="v" style="color:var(--teal)">${fmtMins(rem)}</div><div class="l">USL Remaining</div></div>
-    <div class="pstat"><div class="v" style="color:${wu.val ? (wu.val==='final'||wu.val==='terminated'||wu.val==='term'?'#ff6b7a':wu.val==='2nd'?'#a78bfa':'#6c8cff') : 'var(--text-muted)'}">${wu.val ? wuLabelMap[wu.val] : 'None'}</div><div class="l">Write-Up Status</div></div>
+    <div class="pstat"><div class="v" style="color:${eff ? (eff==='final'||eff==='terminated'?'#ff6b7a':eff==='2nd'?'#a78bfa':'#6c8cff') : 'var(--text-muted)'}">${eff ? wuLabelMap[eff] : 'None'}</div><div class="l">Write-Up Status${decayed ? ' (decayed from ' + wuLabelMap[wu.val] + ')' : ''}</div></div>
     <div class="pstat"><div class="v">${daysSince}</div><div class="l">Since Last Write-Up</div></div>
     <div class="pstat"><div class="v"><span class="val-point">${c60.lates}</span> / <span class="val-one">${c60.callouts}</span></div><div class="l">Lates / Callouts (60d)</div></div>
   `;
