@@ -1254,6 +1254,16 @@ function getAnnualPts(dates) {
   return pts;
 }
 
+function getPts60(dates) {
+  const cutoff = Date.now() - 60*86400000;
+  let pts = 0;
+  Object.entries(dates).forEach(([d,v]) => {
+    const dt = new Date(d + 'T00:00:00');
+    if (!isNaN(dt) && dt.getTime() >= cutoff) pts += getPoints(v);
+  });
+  return pts;
+}
+
 const DEFAULT_USL_BASE = 1920; // 32 hours in minutes, per calendar year
 
 function getUslUsed(person) {
@@ -1372,7 +1382,7 @@ function renderTable() {
   const editable = canEdit(currentStoreId);
 
   document.getElementById('tableHead').innerHTML = `<tr>
-    <th>First Name</th><th>Last Name</th><th>Annual Pts</th><th>Write-Up Pts</th><th title="Unpaid Sick Leave remaining">USL Left</th>
+    <th>First Name</th><th>Last Name</th><th title="Points in the last 60 days">Last 60 Days</th><th title="Points since the most recent write-up">Since Write-Up</th><th title="Unpaid Sick Leave remaining">USL Left</th>
     ${allDates.map(d=>`<th class="date-col">${fmtDate(d)}</th>`).join('')}
   </tr>`;
 
@@ -1389,13 +1399,13 @@ function renderTable() {
     }
     const dates = person.dates || {};
     const usl = person.usl || {};
-    const ap = getAnnualPts(dates);
+    const p60 = getPts60(dates);
     const wp = getWriteupPts(dates);
     if (!showHidden && (person.hidden || person.management)) return '';
     const mgmtTag = person.management ? ' <span style="font-size:0.58rem;padding:1px 6px;border-radius:4px;background:rgba(167,139,250,0.12);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);font-weight:600;letter-spacing:0.04em">MGMT</span>' : '';
 
     const termed = isTerminated(dates);
-    const nc = getNameColor(ap, termed, dates);
+    const nc = getNameColor(p60, termed, dates);
     const remaining = getUslRemaining(person);
     const uslClass = remaining <= 0 ? 'usl-cell usl-empty' : remaining < 480 ? 'usl-cell usl-low' : 'usl-cell';
     const uslDisplay = fmtMins(remaining);
@@ -1404,7 +1414,7 @@ function renderTable() {
     return `<tr>
       <td onclick="openProfile('${kesc}')" title="Click for profile"><span class="name-badge ${nc}">${esc(fn)}</span>${mgmtTag}</td>
       <td onclick="openProfile('${kesc}')" title="Click for profile"><span class="name-badge ${nc}">${esc(ln)}</span></td>
-      <td class="${ptsColor(ap)}">${ap > 0 ? ap % 1 === 0 ? ap : ap.toFixed(1) : '0'}</td>
+      <td class="${ptsColor(p60)}">${p60 > 0 ? p60 % 1 === 0 ? p60 : p60.toFixed(1) : '0'}</td>
       <td class="${ptsColor(wp)}">${wp > 0 ? wp % 1 === 0 ? wp : wp.toFixed(1) : '0'}</td>
       <td class="${uslClass}" onclick="openUslModal('${kesc}')" title="Click to set USL balance / view history">${uslDisplay}</td>
       ${allDates.map(d => {
@@ -1604,6 +1614,7 @@ function renderProfile() {
   document.getElementById('profileSub').textContent = sub.join(' \u2022 ') || 'Active budtender';
 
   const ap = getAnnualPts(dates);
+  const p60 = getPts60(dates);
   const wp = getWriteupPts(dates);
   const wu = getLatestWriteupInfo(dates);
   const rem = getUslRemaining(p);
@@ -1617,8 +1628,9 @@ function renderProfile() {
   }
 
   document.getElementById('profileStats').innerHTML = `
+    <div class="pstat"><div class="v ${ptsColor(p60)}">${p60 % 1 === 0 ? p60 : p60.toFixed(1)}</div><div class="l">Pts &mdash; Last 60 Days</div></div>
+    <div class="pstat"><div class="v ${ptsColor(wp)}">${wp % 1 === 0 ? wp : wp.toFixed(1)}</div><div class="l">Pts Since Write-Up</div></div>
     <div class="pstat"><div class="v ${ptsColor(ap)}">${ap % 1 === 0 ? ap : ap.toFixed(1)}</div><div class="l">Annual Pts</div></div>
-    <div class="pstat"><div class="v ${ptsColor(wp)}">${wp % 1 === 0 ? wp : wp.toFixed(1)}</div><div class="l">Write-Up Pts</div></div>
     <div class="pstat"><div class="v" style="color:var(--teal)">${fmtMins(rem)}</div><div class="l">USL Remaining</div></div>
     <div class="pstat"><div class="v" style="color:${wu.val ? (wu.val==='final'||wu.val==='terminated'||wu.val==='term'?'#ff6b7a':wu.val==='2nd'?'#a78bfa':'#6c8cff') : 'var(--text-muted)'}">${wu.val ? wuLabelMap[wu.val] : 'None'}</div><div class="l">Write-Up Status</div></div>
     <div class="pstat"><div class="v">${daysSince}</div><div class="l">Since Last Write-Up</div></div>
@@ -1961,16 +1973,16 @@ function exportCSV() {
   if (!Object.keys(attendanceData).length) { toast('No data', 'error'); return; }
   rebuildDates();
   const storeName = allStores[currentStoreId] ? allStores[currentStoreId].name : 'store';
-  let csv = 'First Name,Last Name,Annual Pts,Write-Up Pts,USL Base (min),USL Used (min),USL Remaining (min),' + allDates.map(d=>fmtDate(d)).join(',') + '\n';
+  let csv = 'First Name,Last Name,Last 60 Days,Since Write-Up,Annual Pts,USL Base (min),USL Used (min),USL Remaining (min),' + allDates.map(d=>fmtDate(d)).join(',') + '\n';
   Object.entries(attendanceData).filter(([,p])=>!p.management).sort((a,b)=>(a[1].displayName||a[0]).localeCompare(b[1].displayName||b[0])).forEach(([k,p]) => {
     const name = p.displayName||k;
     let fn = '', ln = '';
     if (name.includes(',')) { const pts = name.split(',').map(s=>s.trim()); ln = pts[0]; fn = pts[1]||''; }
     else { const pts = name.split(' ').filter(Boolean); fn = pts[0]||''; ln = pts.slice(1).join(' '); }
     const dates = p.dates||{};
-    const ap = getAnnualPts(dates), wp = getWriteupPts(dates);
+    const ap = getAnnualPts(dates), wp = getWriteupPts(dates), p60 = getPts60(dates);
     const base = getUslBase(p), used = getUslUsed(p);
-    csv += `"${fn}","${ln}",${ap},${wp},${base},${used},${base-used},${allDates.map(d=>{
+    csv += `"${fn}","${ln}",${p60},${wp},${ap},${base},${used},${base-used},${allDates.map(d=>{
       let cell = dates[d]||'';
       if (p.usl && p.usl[d]) cell += (cell?' ':'') + '[USL ' + p.usl[d] + 'm]';
       return '"' + cell + '"';
